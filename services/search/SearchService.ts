@@ -7,8 +7,7 @@ export type ResultCallback = (leads: Lead[]) => void;
 const GOOGLE_MAPS_SCRAPER = 'nwua9Gu5YrADL7ZDj';
 const CONTACT_SCRAPER = 'vdrmO1lXCkhbPjE9j';
 const DECISION_MAKER_FINDER = 'curious_coder/decision-maker-email-extractor';
-const LINKEDIN_PEOPLE_SEARCH = 'curious_coder~linkedin-people-search'; // LinkedIn People Search
-const LINKEDIN_PROFILE = 'anchor~linkedin-profile-scraper'; // LinkedIn Profile Scraper
+const GOOGLE_SEARCH_SCRAPER = 'apify/google-search-scraper'; // For LinkedIn profile search via Google
 
 export class SearchService {
     private isRunning = false;
@@ -29,7 +28,6 @@ export class SearchService {
         location: string;
     }> {
         if (!this.openaiKey) {
-            // Fallback sin AI
             return {
                 searchQuery: userQuery,
                 industry: userQuery,
@@ -74,7 +72,6 @@ Responde SOLO con JSON válido en este formato exacto:
             const data = await response.json();
             const content = data.choices?.[0]?.message?.content || '';
 
-            // Parse JSON response
             const jsonMatch = content.match(/\{[\s\S]*\}/);
             if (jsonMatch) {
                 return JSON.parse(jsonMatch[0]);
@@ -83,7 +80,6 @@ Responde SOLO con JSON válido en este formato exacto:
             console.error('Error interpreting query:', e);
         }
 
-        // Fallback
         return {
             searchQuery: userQuery,
             industry: userQuery,
@@ -93,7 +89,7 @@ Responde SOLO con JSON válido en este formato exacto:
     }
 
     // ═══════════════════════════════════════════════════════════════════════════
-    // AI LEAD ANALYSIS - Generates comprehensive research for each lead
+    // AI LEAD ANALYSIS
     // ═══════════════════════════════════════════════════════════════════════════
     private async generateLeadAnalysis(lead: Lead): Promise<string> {
         if (!this.openaiKey) {
@@ -108,7 +104,6 @@ Web: ${lead.website || 'No disponible'}
 Decisor: ${lead.decisionMaker?.name || 'No identificado'} - ${lead.decisionMaker?.role || 'Cargo desconocido'}
 LinkedIn: ${lead.decisionMaker?.linkedin || 'No disponible'}
 Email: ${lead.decisionMaker?.email || 'No disponible'}
-Teléfono: ${lead.decisionMaker?.phone || 'No disponible'}
 Resumen previo: ${lead.aiAnalysis?.summary || ''}
             `.trim();
 
@@ -154,6 +149,8 @@ Sé conciso pero completo. Máximo 150 palabras total.`
 
     private async callApifyActor(actorId: string, input: any, onLog: LogCallback): Promise<any[]> {
         const startUrl = `https://api.apify.com/v2/acts/${actorId}/runs?token=${this.apiKey}`;
+
+        onLog(`[APIFY] Iniciando actor: ${actorId}`);
 
         const startResponse = await fetch(startUrl, {
             method: 'POST',
@@ -216,7 +213,6 @@ Sé conciso pero completo. Máximo 150 palabras total.`
                 throw new Error("Falta la API Key de Apify. Configura VITE_APIFY_API_TOKEN en tu .env");
             }
 
-            // Step 1: Smart query interpretation
             onLog(`[IA] 🧠 Interpretando búsqueda: "${config.query}"...`);
             const interpreted = await this.interpretQuery(config.query, config.source);
             onLog(`[IA] ✅ Industria: ${interpreted.industry}`);
@@ -238,7 +234,7 @@ Sé conciso pero completo. Máximo 150 palabras total.`
     }
 
     // ═══════════════════════════════════════════════════════════════════════════
-    // GMAIL SEARCH
+    // GMAIL SEARCH (Google Maps)
     // ═══════════════════════════════════════════════════════════════════════════
     private async searchGmail(
         config: SearchConfigState,
@@ -322,9 +318,9 @@ Sé conciso pero completo. Máximo 150 palabras total.`
             }
         }
 
-        // Generate AI analysis for top leads
+        // Generate AI analysis
         if (this.openaiKey && this.isRunning) {
-            onLog(`[IA] 📊 Generando análisis completo de leads...`);
+            onLog(`[IA] 📊 Generando análisis de leads...`);
             const topLeads = basicLeads.slice(0, 10);
 
             for (let i = 0; i < topLeads.length && this.isRunning; i++) {
@@ -341,7 +337,7 @@ Sé conciso pero completo. Máximo 150 palabras total.`
     }
 
     // ═══════════════════════════════════════════════════════════════════════════
-    // LINKEDIN SEARCH - Optimizado para encontrar dueños
+    // LINKEDIN SEARCH - Via Google Search SERP (no cookies needed!)
     // ═══════════════════════════════════════════════════════════════════════════
     private async searchLinkedIn(
         config: SearchConfigState,
@@ -349,106 +345,83 @@ Sé conciso pero completo. Máximo 150 palabras total.`
         onLog: LogCallback,
         onComplete: ResultCallback
     ) {
-        // Build smart search query for business owners
-        const roleTerms = interpreted.targetRoles.slice(0, 3).join(' OR ');
-        const searchQuery = `(${roleTerms}) ${interpreted.industry} ${interpreted.location}`;
+        // Build Google Search query to find LinkedIn profiles
+        const roleTerms = interpreted.targetRoles.slice(0, 2).join(' OR ');
+        const searchQuery = `site:linkedin.com/in "${roleTerms}" "${interpreted.industry}" "${interpreted.location}"`;
 
-        onLog(`[LINKEDIN] 💼 Buscando: "${searchQuery}"`);
+        onLog(`[LINKEDIN] 💼 Buscando via Google: perfiles de ${interpreted.targetRoles[0]} en ${interpreted.industry}`);
 
         try {
             const searchInput = {
-                searchTerms: [searchQuery],
-                maxItems: config.maxResults || 20,
-                searchType: 'people',
+                queries: searchQuery,
+                maxPagesPerQuery: 3,
+                resultsPerPage: config.maxResults || 20,
+                languageCode: 'es',
+                countryCode: 'es',
+                mobileResults: false,
             };
 
-            const searchResults = await this.callApifyActor(LINKEDIN_PEOPLE_SEARCH, searchInput, onLog);
-            onLog(`[LINKEDIN] ✅ ${searchResults.length} perfiles encontrados`);
+            const searchResults = await this.callApifyActor(GOOGLE_SEARCH_SCRAPER, searchInput, onLog);
 
-            if (!this.isRunning || searchResults.length === 0) {
+            // Flatten organic results
+            let allResults: any[] = [];
+            for (const result of searchResults) {
+                if (result.organicResults && Array.isArray(result.organicResults)) {
+                    allResults = allResults.concat(result.organicResults);
+                }
+            }
+
+            // Filter only LinkedIn profile URLs
+            const linkedInProfiles = allResults.filter((r: any) =>
+                r.url && r.url.includes('linkedin.com/in/')
+            );
+
+            onLog(`[LINKEDIN] ✅ ${linkedInProfiles.length} perfiles LinkedIn encontrados`);
+
+            if (!this.isRunning || linkedInProfiles.length === 0) {
                 onComplete([]);
                 return;
             }
 
-            // Process results
-            const leads: Lead[] = searchResults.map((profile: any, index: number) => {
-                const company = profile.currentCompany || profile.companyName || profile.company || 'Empresa no identificada';
-                const headline = profile.headline || profile.title || '';
-                const role = this.extractRole(headline);
+            // Parse LinkedIn profiles from Google results
+            const leads: Lead[] = linkedInProfiles.slice(0, config.maxResults || 20).map((result: any, index: number) => {
+                // Extract name and role from title: "Juan García - CEO - Empresa | LinkedIn"
+                const title = result.title || '';
+                const parts = title.split(' - ');
+                const name = parts[0]?.replace(' | LinkedIn', '').trim() || '';
+                const role = parts[1]?.trim() || this.extractRoleFromText(title);
+                const company = parts[2]?.replace(' | LinkedIn', '').trim() || this.extractCompanyFromText(result.description || '');
 
                 return {
                     id: `linkedin-${Date.now()}-${index}`,
                     source: 'linkedin' as const,
-                    companyName: company,
+                    companyName: company || 'Ver perfil',
                     website: '',
-                    socialUrl: profile.profileUrl || profile.url || profile.linkedInUrl,
-                    location: profile.location || interpreted.location,
+                    socialUrl: result.url,
+                    location: interpreted.location,
                     decisionMaker: {
-                        name: profile.fullName || profile.name || profile.firstName + ' ' + profile.lastName || '',
-                        role: role,
-                        email: profile.email || '',
-                        phone: profile.phone || '',
-                        linkedin: profile.profileUrl || profile.url || profile.linkedInUrl || '',
+                        name: name,
+                        role: role || 'Profesional',
+                        email: '',
+                        phone: '',
+                        linkedin: result.url,
                         facebook: '',
                         instagram: '',
                     },
                     aiAnalysis: {
-                        summary: `${role} en ${company}. ${headline.substring(0, 80)}`,
+                        summary: result.description?.substring(0, 150) || `${role} - ${company}`,
                         painPoints: [],
                         generatedIcebreaker: '',
                         fullMessage: '',
                         fullAnalysis: ''
                     },
-                    status: 'scraped'
+                    status: 'scraped' as const
                 };
             });
 
-            // Try to enrich profiles with more details
-            const profilesToEnrich = leads.filter(l => l.decisionMaker?.linkedin).slice(0, 10);
-
-            if (profilesToEnrich.length > 0 && this.isRunning) {
-                onLog(`[LINKEDIN] 🔍 Obteniendo detalles de ${profilesToEnrich.length} perfiles...`);
-
-                try {
-                    const profileResults = await this.callApifyActor(LINKEDIN_PROFILE, {
-                        profileUrls: profilesToEnrich.map(l => l.decisionMaker!.linkedin),
-                    }, onLog);
-
-                    for (const profile of profileResults) {
-                        const profileUrl = profile.profileUrl || profile.url || profile.linkedInUrl || '';
-                        const matchingLead = leads.find(l =>
-                            l.decisionMaker?.linkedin &&
-                            (profileUrl.includes(l.decisionMaker.linkedin.split('/').pop() || 'xxx') ||
-                                l.decisionMaker.linkedin.includes(profileUrl.split('/').pop() || 'yyy'))
-                        );
-
-                        if (matchingLead?.decisionMaker) {
-                            if (profile.email) {
-                                matchingLead.decisionMaker.email = profile.email;
-                                matchingLead.status = 'enriched';
-                            }
-                            if (profile.phoneNumbers?.length > 0) {
-                                matchingLead.decisionMaker.phone = profile.phoneNumbers[0];
-                            }
-                            if (profile.company?.website || profile.currentCompanyWebsite) {
-                                matchingLead.website = (profile.company?.website || profile.currentCompanyWebsite || '')
-                                    .replace(/^https?:\/\//, '').replace(/\/$/, '');
-                            }
-                            // Update summary with more info
-                            if (profile.summary || profile.about) {
-                                matchingLead.aiAnalysis.summary = `${matchingLead.decisionMaker.role} en ${matchingLead.companyName}. ${(profile.summary || profile.about || '').substring(0, 100)}`;
-                            }
-                        }
-                    }
-                    onLog(`[LINKEDIN] ✅ Perfiles enriquecidos`);
-                } catch (e: any) {
-                    onLog(`[LINKEDIN] ⚠️ Error: ${e.message}`);
-                }
-            }
-
-            // Generate AI analysis for each lead
+            // Generate AI analysis
             if (this.openaiKey && this.isRunning) {
-                onLog(`[IA] 📊 Generando análisis completo de leads...`);
+                onLog(`[IA] 📊 Generando análisis de leads...`);
 
                 for (let i = 0; i < leads.length && this.isRunning; i++) {
                     const lead = leads[i];
@@ -458,11 +431,9 @@ Sé conciso pero completo. Máximo 150 palabras total.`
             }
 
             const withName = leads.filter(l => l.decisionMaker?.name).length;
-            const withEmail = leads.filter(l => l.decisionMaker?.email).length;
 
-            onLog(`[LINKEDIN] 🎯 COMPLETADO: ${leads.length} leads`);
-            onLog(`   • ${withName} con nombre`);
-            onLog(`   • ${withEmail} con email`);
+            onLog(`[LINKEDIN] 🎯 COMPLETADO: ${leads.length} perfiles LinkedIn`);
+            onLog(`   • ${withName} con nombre identificado`);
 
             onComplete(leads);
 
@@ -472,10 +443,10 @@ Sé conciso pero completo. Máximo 150 palabras total.`
         }
     }
 
-    private extractRole(headline: string): string {
-        const lower = headline.toLowerCase();
+    private extractRoleFromText(text: string): string {
+        const lower = text.toLowerCase();
 
-        if (lower.includes('ceo') || lower.includes('chief executive')) return 'CEO';
+        if (lower.includes('ceo')) return 'CEO';
         if (lower.includes('founder') || lower.includes('fundador')) return 'Fundador';
         if (lower.includes('co-founder') || lower.includes('cofundador')) return 'Co-Fundador';
         if (lower.includes('owner') || lower.includes('propietario') || lower.includes('dueño')) return 'Propietario';
@@ -484,8 +455,15 @@ Sé conciso pero completo. Máximo 150 palabras total.`
         if (lower.includes('gerente') || lower.includes('manager')) return 'Gerente';
         if (lower.includes('presidente')) return 'Presidente';
 
-        // Return first meaningful part of headline
-        return headline.split('|')[0].split(' at ')[0].split(' en ')[0].trim().substring(0, 35) || 'Profesional';
+        return '';
+    }
+
+    private extractCompanyFromText(text: string): string {
+        // Try to find company after "en " or "at "
+        const atMatch = text.match(/(?:en|at|@)\s+([A-Z][A-Za-z\s&]+)/);
+        if (atMatch) return atMatch[1].trim();
+
+        return '';
     }
 }
 
