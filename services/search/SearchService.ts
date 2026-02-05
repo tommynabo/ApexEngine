@@ -365,6 +365,9 @@ IMPORTANTE: Responde SOLO con JSON válido, sin explicaciones adicionales.`
         }
 
         // ⚡ FILTER: ONLY leads with email (critical requirement!)
+        onLog(`[DEBUG] Total leads antes de filtrar: ${allLeads.length}`);
+        onLog(`[DEBUG] Leads con email directo de Maps: ${allLeads.filter(l => l.decisionMaker?.email).length}`);
+
         const leadsWithEmail = allLeads.filter(l => l.decisionMaker?.email);
         onLog(`[GMAIL] ✅ ${leadsWithEmail.length} leads CON EMAIL (descartados ${allLeads.length - leadsWithEmail.length} sin email)`);
 
