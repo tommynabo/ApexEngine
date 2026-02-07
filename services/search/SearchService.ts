@@ -4,9 +4,10 @@ export type LogCallback = (message: string) => void;
 export type ResultCallback = (leads: Lead[]) => void;
 
 // Apify Actor IDs
+// Apify Actor IDs
 const GOOGLE_MAPS_SCRAPER = 'nwua9Gu5YrADL7ZDj';
 const CONTACT_SCRAPER = 'vdrmO1lXCkhbPjE9j';
-const GOOGLE_SEARCH_SCRAPER = 'apify/google-search-scraper';
+const GOOGLE_SEARCH_SCRAPER = 'nFJndFXA5zjCTuudP'; // ID for apify/google-search-scraper
 
 export class SearchService {
     private isRunning = false;
