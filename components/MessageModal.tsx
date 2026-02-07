@@ -145,6 +145,18 @@ export function MessageModal({ lead, onClose, onApprove }: MessageModalProps) {
                   </div>
                </div>
 
+               {/* Psychological Profile & Deep Analysis */}
+               {lead.aiAnalysis?.fullAnalysis && (
+                  <div className="bg-primary/5 p-4 rounded-lg border border-primary/20">
+                     <div className="flex items-center gap-2 mb-2">
+                        <span className="text-xs font-bold text-primary uppercase tracking-wide">🧠 Análisis Psicológico & Deep Research</span>
+                     </div>
+                     <div className="text-xs text-muted-foreground leading-relaxed whitespace-pre-wrap max-h-40 overflow-y-auto pr-2 scrollbar-thin scrollbar-thumb-primary/20">
+                        {lead.aiAnalysis.fullAnalysis}
+                     </div>
+                  </div>
+               )}
+
                {/* Message Body */}
                <div className="relative">
                   <div className="absolute top-0 right-0 p-2 z-10">

@@ -169,11 +169,22 @@ ${researchData || 'Sin datos adicionales'}
                                 role: 'system',
                                 content: `Eres un GENIO del análisis de negocios y psicología empresarial. Tu trabajo es hacer el análisis MÁS COMPLETO posible de cada lead para ventas B2B.
 
+SI HAY DATOS DE "ACTIVIDAD RECIENTE (Posts)":
+- Analiza su estilo de escritura (Directo, Reflexivo, Técnico, Vendedor).
+- Deduce sus valores y qué temas le obsesionan ahora mismo.
+- Úsalo para personalizar el mensaje al máximo.
+
 DEBES generar exactamente este JSON (sin markdown, solo JSON puro):
 {
-  "fullAnalysis": "Análisis ultra-completo de 200-300 palabras...",
-  "bottleneck": "Una frase BRUTAL y específica sobre el cuello de botella...",
-  "personalizedMessage": "Mensaje de prospección de 100-150 palabras MUY personalizado..."
+  "fullAnalysis": "Análisis de 200-300 palabras. ESTRUCTURA OBLIGATORIA:
+    1. 🧠 PERFIL PSICOLÓGICO: Tono, estilo, drivers mentales.
+    2. 🏢 MOMENTO EMPRESARIAL: Situación actual deducida.
+    3. 🎯 PUNTOS DE DOLOR: 3 problemas críticos.
+    4. 💡 ÁNGULO DE VENTA: Por qué flipearán con nosotros.",
+
+  "bottleneck": "Una frase BRUTAL y específica sobre su mayor freno o cuello de botella detectado.",
+  
+  "personalizedMessage": "Mensaje de 100 palabras. Tono 'Coffee Chat' profesional. MENCIONA SU ÚLTIMO POST O ACTIVIDAD si existe."
 }
 
 IMPORTANTE: Responde SOLO con JSON válido.`
@@ -420,10 +431,7 @@ IMPORTANTE: Responde SOLO con JSON válido.`
     }
 
     // ═══════════════════════════════════════════════════════════════════════════
-    // LINKEDIN SEARCH
-    // ═══════════════════════════════════════════════════════════════════════════
-    // ═══════════════════════════════════════════════════════════════════════════
-    // LINKEDIN SEARCH - DEEP RESEARCH AGENT
+    // LINKEDIN SEARCH - DEEP RESEARCH + PSYCHOLOGY
     // ═══════════════════════════════════════════════════════════════════════════
     private async searchLinkedIn(
         config: SearchConfigState,
@@ -431,19 +439,19 @@ IMPORTANTE: Responde SOLO con JSON válido.`
         onLog: LogCallback,
         onComplete: ResultCallback
     ) {
-        // 1. Definar búsqueda de perfiles de alto nivel
+        // 1. ACTIVE SEARCH (Búsqueda Activa)
         const roleTerms = interpreted.targetRoles.slice(0, 2).join(' OR ');
-        const searchQuery = `site:linkedin.com/in "${roleTerms}" "${interpreted.industry}" "${interpreted.location}"`;
+        const activeQuery = `site:linkedin.com/in ${roleTerms} "${interpreted.industry}" "${interpreted.location}"`;
 
-        onLog(`[LINKEDIN] 🕵️‍♂️ Agente de Investigación iniciado`);
-        onLog(`[LINKEDIN] 🎯 Objetivo: ${interpreted.targetRoles[0]} en ${interpreted.industry} (${interpreted.location})`);
+        onLog(`[LINKEDIN] 🕵️‍♂️ Iniciando BÚSQUEDA ACTIVA`);
+        onLog(`[LINKEDIN] 🎯 Query: ${activeQuery}`);
 
         try {
-            // STEP 1: Find Profiles via Google
+            // STEP 1: Discovery via Google
             const searchResults = await this.callApifyActor(GOOGLE_SEARCH_SCRAPER, {
-                queries: searchQuery,
+                queries: activeQuery,
                 maxPagesPerQuery: 2,
-                resultsPerPage: config.maxResults || 20,
+                resultsPerPage: config.maxResults || 15,
                 languageCode: 'es',
                 countryCode: 'es',
             }, onLog);
@@ -454,149 +462,98 @@ IMPORTANTE: Responde SOLO con JSON válido.`
             }
 
             const linkedInProfiles = allResults.filter((r: any) => r.url?.includes('linkedin.com/in/'));
-            onLog(`[LINKEDIN] 📋 ${linkedInProfiles.length} perfiles candidatos encontrados. Iniciando análisis profundo...`);
+            onLog(`[LINKEDIN] 📋 ${linkedInProfiles.length} perfiles detectados.`);
 
             if (!this.isRunning || linkedInProfiles.length === 0) {
-                onLog(`[LINKEDIN] ❌ No se encontraron perfiles iniciales. Intenta ampliar la zona o los términos.`);
+                onLog(`[LINKEDIN] ❌ No se encontraron perfiles. Intenta ampliar la zona.`);
                 onComplete([]);
                 return;
             }
 
-            // STEP 2: Process candidates (Deep Research Logic)
-            const potentialLeads = linkedInProfiles.slice(0, (config.maxResults || 10) + 5); // Take a few extra
+            // STEP 2: Deep Analysis (Posts + Psych Profile)
+            const potentialLeads = linkedInProfiles.slice(0, (config.maxResults || 5)); // Process fewer for deep analysis speed
             const finalLeads: Lead[] = [];
 
+            // Actor for posts (from the JSON reference)
+            const POSTS_SCRAPER = 'LQQIXN9Othf8f7R5n'; // apimaestro/linkedin-profile-posts
+
             for (let i = 0; i < potentialLeads.length && this.isRunning; i++) {
-                if (finalLeads.length >= (config.maxResults || 10)) break;
-
                 const profile = potentialLeads[i];
-                onLog(`[RESEARCH] 🔍 Investigando candidato ${i + 1}/${potentialLeads.length}...`);
+                onLog(`[RESEARCH] 🧠 Analizando candidato ${i + 1}/${potentialLeads.length}: ${profile.title.split(' - ')[0]}...`);
 
-                // Parse Title/Snippet
-                const title = profile.title || '';
-                const parts = title.split(' - ');
-                const name = parts[0]?.replace(' | LinkedIn', '').trim() || '';
-                const role = this.extractRole(title) || parts[1]?.trim() || 'Decisor';
-                const companyCandidate = parts[2]?.replace(' | LinkedIn', '').trim() || this.extractCompany(title);
+                // Parse Basic Info
+                const titleParts = (profile.title || '').split(' - ');
+                const name = titleParts[0]?.replace(' | LinkedIn', '').trim() || 'Usuario LinkedIn';
+                const role = this.extractRole(profile.title) || 'Decisor';
+                const company = this.extractCompany(profile.title) || 'Empresa Desconocida';
 
-                // Skip if no company found
-                if (!companyCandidate || companyCandidate.length < 3) {
-                    onLog(`[RESEARCH] ⏭️ Saltando: No se identificó empresa clara para ${name}`);
-                    continue;
-                }
-
-                onLog(`[RESEARCH] 🏢 Empresa detectada: ${companyCandidate}. Buscando huella digital...`);
-
-                // STEP 3: Find Company Website & Context
-                let website = '';
-                let companyContext = '';
+                // STEP 3: Scrape Recent Posts (The "Extra Step")
+                let recentPostsText = "";
+                let writingStyle = "Desconocido";
 
                 try {
-                    const companySearch = await this.callApifyActor(GOOGLE_SEARCH_SCRAPER, {
-                        queries: `"${companyCandidate}" site:.es OR site:.com "contacto" OR "email"`,
-                        maxPagesPerQuery: 1,
-                        resultsPerPage: 3,
-                        languageCode: 'es',
-                        countryCode: 'es',
-                    }, () => { }); // Silent sub-search
+                    onLog(`[RESEARCH] 📲 Obteniendo actividad reciente (Posts)...`);
+                    const postsData = await this.callApifyActor(POSTS_SCRAPER, {
+                        username: profile.url,
+                        limit: 3 // Analyze last 3 posts
+                    }, () => { }); // Silent log for sub-task
 
-                    const firstResult = companySearch[0]?.organicResults?.[0];
-                    if (firstResult) {
-                        website = firstResult.url;
-                        companyContext = `${firstResult.title}: ${firstResult.description}`;
-                        onLog(`[RESEARCH] 🌐 Web encontrada: ${website}`);
+                    if (postsData && postsData.length > 0) {
+                        recentPostsText = postsData.map((p: any) => `POST (${p.date || 'Reciente'}): ${p.text?.substring(0, 200)}...`).join('\n');
+                        onLog(`[RESEARCH] ✅ ${postsData.length} posts recuperados para análisis.`);
+                    } else {
+                        onLog(`[RESEARCH] ⚠️ Sin actividad reciente accesible.`);
                     }
                 } catch (e) {
-                    onLog(`[RESEARCH] ⚠️ Fallo buscando web de empresa: ${companyCandidate}`);
+                    onLog(`[RESEARCH] ⚠️ No se pudieron leer posts (Perfil privado o error).`);
                 }
 
-                // STEP 4: Scrape Website for Email (Enrichment)
-                let email = '';
-                let phone = '';
-                let websiteContent = '';
-
-                if (website) {
-                    onLog(`[RESEARCH] 📧 Escaneando ${website} en busca de datos...`);
-                    try {
-                        const contactData = await this.callApifyActor(CONTACT_SCRAPER, {
-                            startUrls: [{ url: website }],
-                            maxRequestsPerWebsite: 2,
-                            sameDomainOnly: true,
-                        }, () => { });
-
-                        const contact = contactData[0];
-                        if (contact) {
-                            if (contact.emails?.length) email = contact.emails[0];
-                            if (contact.phones?.length) phone = contact.phones[0];
-                            // Also try to capture some text context if available from the scraper (depends on actor version)
-                            // For now we rely on the Google Snippet 'companyContext' for AI
-                        }
-                    } catch (e) {
-                        onLog(`[RESEARCH] ⚠️ No se pudo extraer contacto de la web.`);
-                    }
-                }
-
-                // STEP 5: AI Analysis (Deep Research Synthesis)
-                // Even if no email, we might have enough for a draft if the user manually finds it later.
-                // But per user request "No email = filter" isn't strictly for LinkedIn, but let's prioritize emails.
-
-                if (email) {
-                    onLog(`[RESEARCH] ✅ CONTACTO VALIDADO: ${email}`);
-                } else {
-                    onLog(`[RESEARCH] ⚠️ Sin email verificado. Se incluirá para revisión manual.`);
-                }
-
-                // Construct Deep Context
+                // STEP 4: Psychological Analysis
                 const researchDossier = `
-                PERFIL LINKEDIN:
+                PERFIL:
                 Nombre: ${name}
-                Headline: ${title}
+                Headline: ${profile.title}
                 Snippet: ${profile.description}
-                Link: ${profile.url}
-
-                EMPRESA:
-                Nombre: ${companyCandidate}
-                Web: ${website}
-                Contexto Google: ${companyContext}
+                URL: ${profile.url}
+                
+                ACTIVIDAD RECIENTE (Posts):
+                ${recentPostsText || "No hay posts recientes disponibles."}
                 `;
 
-                // Generate AI Analysis
                 const analysis = await this.generateUltraAnalysis({
-                    companyName: companyCandidate,
-                    decisionMaker: { name, role, email, phone, linkedin: profile.url }
+                    companyName: company,
+                    decisionMaker: { name, role, linkedin: profile.url }
                 } as Lead, researchDossier);
 
                 finalLeads.push({
-                    id: `linkedin-${Date.now()}-${i}`,
+                    id: `linkedin-psych-${Date.now()}-${i}`,
                     source: 'linkedin',
-                    companyName: companyCandidate,
-                    website: website,
+                    companyName: company,
+                    website: '', // We could search this, but focusing on Profile now
                     location: interpreted.location,
                     decisionMaker: {
                         name,
                         role,
-                        email: email, // Might be empty
-                        phone: phone,
-                        linkedin: profile.url,
-                        facebook: '',
-                        instagram: ''
+                        email: '', // Email is secondary in this flow
+                        phone: '',
+                        linkedin: profile.url
                     },
                     aiAnalysis: {
-                        summary: profile.description || `Perfil profesional de ${companyCandidate}`,
+                        summary: `Perfil Psicológico: ${analysis.bottleneck}`, // Using bottleneck field for psych summary
                         fullAnalysis: analysis.fullAnalysis,
                         fullMessage: analysis.personalizedMessage,
                         generatedIcebreaker: analysis.bottleneck,
                         painPoints: []
                     },
-                    status: email ? 'ready' : 'enriched'
+                    status: 'ready'
                 });
             }
 
-            onLog(`[LINKEDIN] 🏁 Investigación finalizada. ${finalLeads.length} leads cualificados generados.`);
+            onLog(`[LINKEDIN] 🏁 Proceso finalizado. ${finalLeads.length} leads analizados.`);
             onComplete(finalLeads);
 
         } catch (error: any) {
-            onLog(`[LINKEDIN] ❌ Error crítico en investigación: ${error.message}`);
+            onLog(`[LINKEDIN] ❌ Error: ${error.message}`);
             onComplete([]);
         }
     }
