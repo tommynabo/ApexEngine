@@ -211,7 +211,9 @@ function App() {
 
         playGlassSound();
         setTimeout(() => setTerminalExpanded(false), 1500);
-      }
+      },
+      // userId para deduplicación
+      userId
     );
   };
 

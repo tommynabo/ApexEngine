@@ -1,4 +1,5 @@
 import { Lead, SearchConfigState } from '../../lib/types';
+import { deduplicationService } from '../deduplication/DeduplicationService';
 
 export type LogCallback = (message: string) => void;
 export type ResultCallback = (leads: Lead[]) => void;
@@ -13,6 +14,7 @@ export class SearchService {
     private isRunning = false;
     private apiKey: string = '';
     private openaiKey: string = '';
+    private userId: string | null = null; // For deduplication
 
     public stop() {
         this.isRunning = false;
@@ -281,8 +283,14 @@ IMPORTANTE: Responde SOLO con JSON válido.`
         return await itemsRes.json();
     }
 
-    public async startSearch(config: SearchConfigState, onLog: LogCallback, onComplete: ResultCallback) {
+    public async startSearch(
+        config: SearchConfigState,
+        onLog: LogCallback,
+        onComplete: ResultCallback,
+        userId?: string | null
+    ) {
         this.isRunning = true;
+        this.userId = userId || null;
 
         try {
             this.apiKey = import.meta.env.VITE_APIFY_API_TOKEN || '';
@@ -290,14 +298,44 @@ IMPORTANTE: Responde SOLO con JSON válido.`
 
             if (!this.apiKey) throw new Error("Falta VITE_APIFY_API_TOKEN en .env");
 
+            // ═══════════════════════════════════════════════════════════════════════════
+            // FASE 1: Pre-Flight - Descargar leads existentes del usuario
+            // ═══════════════════════════════════════════════════════════════════════════
+            onLog(`[DEDUP] 🔍 Iniciando verificación anti-duplicados...`);
+            const { existingWebsites, existingCompanyNames } = 
+                await deduplicationService.fetchExistingLeads(this.userId);
+
+            // ═══════════════════════════════════════════════════════════════════════════
+            // Crear un callback intermediario que aplique deduplicación
+            // ═══════════════════════════════════════════════════════════════════════════
+            const deduplicatedOnComplete = async (rawResults: Lead[]) => {
+                // FASE 2: Filtrado - Aplicar deduplicación
+                onLog(`[DEDUP] 🎯 Aplicando filtro anti-duplicados (${rawResults.length} candidatos)...`);
+                const uniqueLeads = deduplicationService.filterUniqueCandidates(
+                    rawResults,
+                    existingWebsites,
+                    existingCompanyNames
+                );
+
+                if (uniqueLeads.length < rawResults.length) {
+                    onLog(
+                        `[DEDUP] ⚠️ ${rawResults.length - uniqueLeads.length} duplicados eliminados. ` +
+                        `Procediendo con ${uniqueLeads.length} leads únicos.`
+                    );
+                }
+
+                // Llamar al callback original con los resultados deduplicados
+                onComplete(uniqueLeads);
+            };
+
             onLog(`[IA] 🧠 Interpretando: "${config.query}"...`);
             const interpreted = await this.interpretQuery(config.query, config.source);
             onLog(`[IA] ✅ Industria: ${interpreted.industry}`);
 
             if (config.source === 'linkedin') {
-                await this.searchLinkedIn(config, interpreted, onLog, onComplete);
+                await this.searchLinkedIn(config, interpreted, onLog, deduplicatedOnComplete);
             } else {
-                await this.searchGmail(config, interpreted, onLog, onComplete);
+                await this.searchGmail(config, interpreted, onLog, deduplicatedOnComplete);
             }
 
         } catch (error: any) {
