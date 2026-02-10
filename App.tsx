@@ -192,8 +192,10 @@ function App() {
         setHistory(prev => [newSession, ...prev]);
 
         // Save to Supabase (Cloud)
+        // Save to Supabase (Cloud)
         if (userId) {
           try {
+            console.log('[App] Saving to search_results_diego for user:', userId);
             const { error } = await supabase.from('search_results_diego').insert({
               user_id: userId,
               session_id: newSession.id,
@@ -202,11 +204,18 @@ function App() {
               lead_data: results as any,
               status: 'new'
             });
-            if (error) console.error('DB Error:', error);
+            if (error) {
+              console.error('DB Error:', error);
+              addLog(`[ERROR] Fallo al guardar en base de datos: ${error.message}`);
+            }
             else addLog('[DB] Resultados guardados en la nube de forma segura.');
           } catch (err) {
             console.error('Failed to save results to DB', err);
+            addLog(`[ERROR] Excepción al guardar: ${err}`);
           }
+        } else {
+          console.warn('[App] No userId found, skipping Supabase save');
+          addLog('[ADVERTENCIA] No se pudo guardar en la nube (Usuario no identificado).');
         }
 
         playGlassSound();
@@ -257,9 +266,6 @@ function App() {
               <h1 className="text-3xl md:text-4xl font-bold tracking-tight">
                 Diego <span className="text-primary">LeadOS</span>
               </h1>
-              <p className="text-muted-foreground text-lg max-w-2xl mx-auto">
-                Tu Motor de Crecimiento Automatizado para Gimnasios y Centros Fitness.
-              </p>
             </div>
 
             <SearchConfig
