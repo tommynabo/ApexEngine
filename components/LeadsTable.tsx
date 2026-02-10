@@ -8,7 +8,7 @@ interface LeadsTableProps {
 }
 
 const exportToCSV = (leads: Lead[]) => {
-  const headers = ['Empresa', 'Email', 'Teléfono', 'Web', 'Decisor', 'Cargo', 'LinkedIn', 'Ubicación', 'CUELLO DE BOTELLA', '🧠 PERFIL PSICOLÓGICO', '🏢 MOMENTO EMPRESARIAL', '💡 ÁNGULO DE VENTA', 'MENSAJE PERSONALIZADO'];
+  const headers = ['Empresa', 'Email', 'Teléfono', 'Web', 'Decisor', 'Cargo', 'LinkedIn', 'Perfil LinkedIn', 'Ubicación', 'CUELLO DE BOTELLA', '🧠 PERFIL PSICOLÓGICO', '🏢 MOMENTO EMPRESARIAL', '💡 ÁNGULO DE VENTA', 'MENSAJE PERSONALIZADO'];
   const escapeCSV = (value: string | undefined) => {
     if (!value) return '';
     const escaped = value.replace(/"/g, '""').replace(/\n/g, ' ').replace(/\r/g, '');
@@ -25,6 +25,7 @@ const exportToCSV = (leads: Lead[]) => {
     escapeCSV(l.decisionMaker?.name),
     escapeCSV(l.decisionMaker?.role),
     escapeCSV(l.decisionMaker?.linkedin),
+    escapeCSV(l.decisionMaker?.linkedin ? l.decisionMaker.linkedin : ''), // Explicit Profile Link
     escapeCSV(l.location),
     escapeCSV(l.aiAnalysis?.generatedIcebreaker || 'Pendiente de detección'), // Bottleneck
     escapeCSV(l.aiAnalysis?.psychologicalProfile || 'Pendiente'),

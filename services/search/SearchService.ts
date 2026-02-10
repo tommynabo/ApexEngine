@@ -302,7 +302,7 @@ IMPORTANTE: Responde SOLO con JSON válido.`
             // FASE 1: Pre-Flight - Descargar leads existentes del usuario
             // ═══════════════════════════════════════════════════════════════════════════
             onLog(`[DEDUP] 🔍 Iniciando verificación anti-duplicados...`);
-            const { existingWebsites, existingCompanyNames } = 
+            const { existingWebsites, existingCompanyNames } =
                 await deduplicationService.fetchExistingLeads(this.userId);
 
             // ═══════════════════════════════════════════════════════════════════════════
@@ -372,6 +372,14 @@ IMPORTANTE: Responde SOLO con JSON válido.`
             maxReviews: 0,
         }, onLog);
 
+        onLog(`[DEBUG] 🗺️ Maps returned ${mapsResults.length} raw results.`);
+
+        if (mapsResults.length === 0) {
+            onLog(`[DEBUG] ⚠️ No specific results found in Maps for query: "${query}"`);
+            // Fallback suggestion
+            if (query.includes('undefined')) onLog(`[DEBUG] ❌ Query seems malformed (undefined). Check input inputs.`);
+        }
+
         onLog(`[GMAIL] 📊 ${mapsResults.length} empresas encontradas. Filtrando vacíos...`);
 
         // Convert to leads
@@ -409,6 +417,12 @@ IMPORTANTE: Responde SOLO con JSON válido.`
         const alreadyHasEmail = allLeads.filter(l => l.decisionMaker?.email);
 
         onLog(`[GMAIL] ℹ️ Estado actual: ${alreadyHasEmail.length} con email / ${needEmail.length} requieren deep scraping.`);
+
+        if (allLeads.length === 0) {
+            onLog(`[DEBUG] ❌ No leads created from Maps results. Check mapping logic.`);
+        } else {
+            onLog(`[DEBUG] ✅ ${allLeads.length} leads created internally. Checking emails...`);
+        }
 
         if (needEmail.length > 0 && this.isRunning) {
             // Process in batches to avoid timeouts but maximize throughput
@@ -466,8 +480,13 @@ IMPORTANTE: Responde SOLO con JSON válido.`
             }
         }
 
+        const afterScrapingTotal = allLeads.filter(l => l.decisionMaker?.email).length;
+        onLog(`[DEBUG] 📊 Total with emails after scraping: ${afterScrapingTotal}`);
+
         // ⚡ FILTER FINAL: ONLY leads with email
         const finalCandidates = allLeads.filter(l => l.decisionMaker?.email);
+
+        onLog(`[DEBUG] 🔍 Filtering finals: ${allLeads.length} total -> ${finalCandidates.length} with email.`);
 
         if (finalCandidates.length === 0) {
             onLog(`[ERROR] ❌ CRÍTICO: No se encontraron emails válidos tras el scraping profundo.`);
