@@ -13,8 +13,6 @@ interface SearchConfigProps {
 export function SearchConfig({ config, onChange, onSearch, onStop, isSearching }: SearchConfigProps & { onStop: () => void }) {
   const [schedulerEnabled, setSchedulerEnabled] = useState(false);
   const [scheduleTime, setScheduleTime] = useState('09:00');
-  const [schedulerEnabled, setSchedulerEnabled] = useState(false);
-  const [scheduleTime, setScheduleTime] = useState('09:00');
   const [showTimePicker, setShowTimePicker] = useState(false);
   const [schedulerQuantity, setSchedulerQuantity] = useState(10); // Default 10 for auto-pilot
 
