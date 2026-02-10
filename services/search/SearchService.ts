@@ -564,7 +564,15 @@ IMPORTANTE: Responde SOLO con JSON válido.`
                 if (result.organicResults) allResults = allResults.concat(result.organicResults);
             }
 
+            onLog(`[DEBUG] 🔍 Total Google Organic Results: ${allResults.length}`);
+
             const linkedInProfiles = allResults.filter((r: any) => r.url?.includes('linkedin.com/in/'));
+            onLog(`[DEBUG] 👤 Detected LinkedIn Profiles: ${linkedInProfiles.length}`);
+
+            if (linkedInProfiles.length > 0) {
+                onLog(`[DEBUG] First profile found: ${linkedInProfiles[0].title} - ${linkedInProfiles[0].url}`);
+            }
+
             onLog(`[LINKEDIN] 📋 ${linkedInProfiles.length} perfiles detectados.`);
 
             if (!this.isRunning || linkedInProfiles.length === 0) {
@@ -655,30 +663,33 @@ IMPORTANTE: Responde SOLO con JSON válido.`
                 });
             }
 
-            onLog(`[LINKEDIN] 🏁 Proceso finalizado. ${finalLeads.length} leads analizados.`);
-            onComplete(finalLeads);
-
-        } catch (error: any) {
-            onLog(`[LINKEDIN] ❌ Error: ${error.message}`);
-            onComplete([]);
+            onLog(`[DEBUG] ✨ Added lead to final list: ${name}`);
         }
+
+            onLog(`[LINKEDIN] 🏁 Proceso finalizado. ${finalLeads.length} leads analizados y listos.`);
+        onComplete(finalLeads);
+
+    } catch(error: any) {
+        onLog(`[LINKEDIN] ❌ Error: ${error.message}`);
+        onComplete([]);
     }
+}
 
     private extractCompany(text: string): string {
-        // Heuristic: "CEO en [Empresa]" or "CEO at [Company]"
-        const atMatch = text.match(/\b(en|at|@)\s+([^|\-.,]+)/i);
-        if (atMatch && atMatch[2]) return atMatch[2].trim();
-        return '';
-    }
+    // Heuristic: "CEO en [Empresa]" or "CEO at [Company]"
+    const atMatch = text.match(/\b(en|at|@)\s+([^|\-.,]+)/i);
+    if (atMatch && atMatch[2]) return atMatch[2].trim();
+    return '';
+}
 
     private extractRole(text: string): string {
-        const lower = text.toLowerCase();
-        if (lower.includes('ceo')) return 'CEO';
-        if (lower.includes('founder') || lower.includes('fundador')) return 'Fundador';
-        if (lower.includes('owner') || lower.includes('propietario')) return 'Propietario';
-        if (lower.includes('director')) return 'Director';
-        return '';
-    }
+    const lower = text.toLowerCase();
+    if (lower.includes('ceo')) return 'CEO';
+    if (lower.includes('founder') || lower.includes('fundador')) return 'Fundador';
+    if (lower.includes('owner') || lower.includes('propietario')) return 'Propietario';
+    if (lower.includes('director')) return 'Director';
+    return '';
+}
 }
 
 export const searchService = new SearchService();
