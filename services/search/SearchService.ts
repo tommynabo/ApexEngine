@@ -280,7 +280,17 @@ IMPORTANTE: Responde SOLO con JSON válido.`
         if (!this.isRunning) return [];
 
         const itemsRes = await fetch(`${baseUrl}/datasets/${defaultDatasetId}/items?token=${this.apiKey}`);
-        return await itemsRes.json();
+        const items = await itemsRes.json();
+        
+        onLog(`[APIFY] ✅ Dataset completado: ${Array.isArray(items) ? items.length : 0} items retornados`);
+        if (Array.isArray(items) && items.length > 0) {
+            const sample = items[0];
+            const hasWebsite = sample.website ?? sample.websiteUrl ?? sample.link ?? false;
+            const hasEmail = sample.email ?? sample.emails ?? false;
+            onLog(`[APIFY] 📊 Muestra: website=${!!hasWebsite}, email=${!!hasEmail}`);
+        }
+        
+        return Array.isArray(items) ? items : [];
     }
 
     public async startSearch(
@@ -305,37 +315,21 @@ IMPORTANTE: Responde SOLO con JSON válido.`
             const { existingWebsites, existingCompanyNames } =
                 await deduplicationService.fetchExistingLeads(this.userId);
 
-            // ═══════════════════════════════════════════════════════════════════════════
-            // Crear un callback intermediario que aplique deduplicación
-            // ═══════════════════════════════════════════════════════════════════════════
-            const deduplicatedOnComplete = async (rawResults: Lead[]) => {
-                // FASE 2: Filtrado - Aplicar deduplicación
-                onLog(`[DEDUP] 🎯 Aplicando filtro anti-duplicados (${rawResults.length} candidatos)...`);
-                const uniqueLeads = deduplicationService.filterUniqueCandidates(
-                    rawResults,
-                    existingWebsites,
-                    existingCompanyNames
-                );
-
-                if (uniqueLeads.length < rawResults.length) {
-                    onLog(
-                        `[DEDUP] ⚠️ ${rawResults.length - uniqueLeads.length} duplicados eliminados. ` +
-                        `Procediendo con ${uniqueLeads.length} leads únicos.`
-                    );
-                }
-
-                // Llamar al callback original con los resultados deduplicados
-                onComplete(uniqueLeads);
-            };
-
             onLog(`[IA] 🧠 Interpretando: "${config.query}"...`);
             const interpreted = await this.interpretQuery(config.query, config.source);
             onLog(`[IA] ✅ Industria: ${interpreted.industry}`);
 
             if (config.source === 'linkedin') {
-                await this.searchLinkedIn(config, interpreted, onLog, deduplicatedOnComplete);
+                await this.searchLinkedIn(config, interpreted, onLog, onComplete);
             } else {
-                await this.searchGmail(config, interpreted, onLog, deduplicatedOnComplete);
+                await this.searchGmail(
+                    config, 
+                    interpreted, 
+                    existingWebsites,
+                    existingCompanyNames,
+                    onLog, 
+                    onComplete
+                );
             }
 
         } catch (error: any) {
@@ -353,6 +347,8 @@ IMPORTANTE: Responde SOLO con JSON válido.`
     private async searchGmail(
         config: SearchConfigState,
         interpreted: { searchQuery: string; industry: string; targetRoles: string[]; location: string },
+        existingWebsites: Set<string>,
+        existingCompanyNames: Set<string>,
         onLog: LogCallback,
         onComplete: ResultCallback
     ) {
@@ -388,44 +384,69 @@ IMPORTANTE: Responde SOLO con JSON válido.`
                 maxReviews: 0,
             }, onLog);
 
+            onLog(`[DEBUG] 🔧 Apify retornó ${mapsResults.length} items (esperábamos ~${fetchAmount})...`);
+
             if (mapsResults.length === 0) {
                 onLog(`[ATTEMPT ${attempts}] ⚠️ No se encontraron más resultados en Maps.`);
                 break; // No more results
             }
 
-            onLog(`[DEBUG] 🗺️ Maps devolvió ${mapsResults.length} resultados (total escaneados: ${totalScannedPreviously})...`);
+            onLog(`[DEBUG] 🗺️ Maps devolvió ${mapsResults.length} resultados...`);
+            
+            // Analyze what Apify returned
+            const withWebsite = mapsResults.filter((r: any) => r.website).length;
+            const withEmail = mapsResults.filter((r: any) => r.email || r.emails?.length).length;
+            onLog(`[DEBUG] 📊 ${withWebsite} con website, ${withEmail} con email interno...`);
 
             // Update pagination tracker
             totalScannedPreviously += mapsResults.length;
 
             // Convert to leads
-            let allLeads: Lead[] = mapsResults.map((item: any, index: number) => ({
-                id: String(item.placeId || `lead-${Date.now()}-${attempts}-${index}`),
-                source: 'gmail' as const,
-                companyName: item.title || item.name || 'Sin Nombre',
-                website: item.website?.replace(/^https?:\/\//, '').replace(/\/$/, '') || '',
-                location: item.address || item.fullAddress || '',
-                decisionMaker: {
-                    name: '',
-                    role: 'Propietario',
-                    email: item.email || (item.emails?.[0]) || '',
-                    phone: item.phone || (item.phones?.[0]) || '',
-                    linkedin: '',
-                    facebook: item.facebook || '',
-                    instagram: item.instagram || '',
-                },
-                aiAnalysis: {
-                    summary: `${item.categoryName || interpreted.industry} - ${item.reviewsCount || 0} reseñas (${item.totalScore || 'N/A'}⭐)`,
-                    painPoints: [],
-                    generatedIcebreaker: '',
-                    fullMessage: '',
-                    fullAnalysis: '',
-                    psychologicalProfile: '',
-                    businessMoment: '',
-                    salesAngle: ''
-                },
-                status: 'scraped' as const
-            }));
+            let allLeads: Lead[] = mapsResults.map((item: any, index: number) => {
+                // Extract website - try multiple field names
+                let website = '';
+                if (item.website) {
+                    website = item.website.replace(/^https?:\/\//, '').replace(/\/$/, '').replace(/^www\./, '');
+                } else if (item.websiteUrl) {
+                    website = item.websiteUrl.replace(/^https?:\/\//, '').replace(/\/$/, '').replace(/^www\./, '');
+                }
+                
+                // Extract email - try multiple field names
+                let email = '';
+                if (item.email) {
+                    email = item.email;
+                } else if (item.emails && Array.isArray(item.emails) && item.emails.length > 0) {
+                    email = item.emails[0];
+                }
+                
+                return {
+                    id: String(item.placeId || `lead-${Date.now()}-${attempts}-${index}`),
+                    source: 'gmail' as const,
+                    companyName: item.title || item.name || 'Sin Nombre',
+                    website: website,
+                    location: item.address || item.fullAddress || '',
+                    decisionMaker: {
+                        name: '',
+                        role: 'Propietario',
+                        email: email,
+                        phone: item.phone || (item.phones?.[0]) || '',
+                        linkedin: '',
+                        facebook: item.facebook || '',
+                        instagram: item.instagram || '',
+                    },
+                    aiAnalysis: {
+                        summary: `${item.categoryName || interpreted.industry} - ${item.reviewsCount || 0} reseñas (${item.totalScore || 'N/A'}⭐)`,
+                        painPoints: [],
+                        generatedIcebreaker: '',
+                        fullMessage: '',
+                        fullAnalysis: '',
+                        psychologicalProfile: '',
+                        businessMoment: '',
+                        salesAngle: ''
+                    },
+                    status: 'scraped' as const
+                };
+            });
 
             // Filter deduplication from existing leads (catch new ones)
             const newCandidates = allLeads.filter(lead => {
@@ -440,12 +461,16 @@ IMPORTANTE: Responde SOLO con JSON válido.`
                 return !isSessionDuplicate;
             });
 
+            const withWebsite = newCandidates.filter(l => l.website && l.website.length > 0).length;
+            const withEmail = newCandidates.filter(l => l.decisionMaker?.email).length;
+            onLog(`[ATTEMPT ${attempts}] 📊 Candidatos: ${newCandidates.length} total (${withWebsite} con website, ${withEmail} con email)`);
+
             if (newCandidates.length === 0) {
                 onLog(`[ATTEMPT ${attempts}] ⚠️ Todos los candidatos ya procesados.`);
                 break;
             }
 
-            onLog(`[ATTEMPT ${attempts}] ✨ ${newCandidates.length} candidatos nuevos.`);
+            onLog(`[ATTEMPT ${attempts}] ✨ ${newCandidates.length} candidatos únicos.`);
             allLeads = newCandidates;
 
             // STAGE 2: Aggressive Contact Enrichment
@@ -495,17 +520,51 @@ IMPORTANTE: Responde SOLO con JSON válido.`
                 }
             }
 
-            // Filter leads with email
-            const finalCandidates = allLeads.filter(l => l.decisionMaker?.email);
-
-            if (finalCandidates.length === 0) {
-                onLog(`[ATTEMPT ${attempts}] ⚠️ Ninguno tiene email válido.`);
-                continue; // Try next attempt
+            // Filter leads with email (but allow leads without email as fallback)
+            const leadsWithEmail = allLeads.filter(l => l.decisionMaker?.email);
+            const slotsRemaining = targetCount - validLeads.length;
+            
+            // Use leads with email, but if not enough, add leads without email
+            let finalCandidates = leadsWithEmail.slice(0, slotsRemaining);
+            
+            if (finalCandidates.length < slotsRemaining && leadsWithEmail.length < allLeads.length) {
+                const leadsWithoutEmail = allLeads.filter(l => !l.decisionMaker?.email);
+                const slotsStillNeeded = slotsRemaining - finalCandidates.length;
+                finalCandidates = finalCandidates.concat(leadsWithoutEmail.slice(0, slotsStillNeeded));
+                onLog(`[ATTEMPT ${attempts}] ℹ️ Agregando ${leadsWithoutEmail.slice(0, slotsStillNeeded).length} leads sin email como fallback...`);
             }
 
-            // Add successful leads to collection
-            const slotsRemaining = targetCount - validLeads.length;
-            const leadsToAdd = finalCandidates.slice(0, slotsRemaining);
+            if (finalCandidates.length === 0) {
+                onLog(`[ATTEMPT ${attempts}] ⚠️ No hay candidatos disponibles después del scraping.`);
+                break; // Exit loop instead of continuing forever
+            }
+
+            onLog(`[ATTEMPT ${attempts}] 📊 ${leadsWithEmail.length} con email, ${finalCandidates.length - leadsWithEmail.length} sin email.`);
+
+            // ═══════════════════════════════════════════════════════════════════
+            // DEDUPLICACIÓN GLOBAL: Filtrar contra el historial del usuario
+            // ═══════════════════════════════════════════════════════════════════
+            onLog(`[DEDUP] 🎯 Filtrando ${finalCandidates.length} candidatos contra historial global...`);
+            const deduplicatedCandidates = deduplicationService.filterUniqueCandidates(
+                finalCandidates,
+                existingWebsites,
+                existingCompanyNames
+            );
+            
+            if (deduplicatedCandidates.length < finalCandidates.length) {
+                onLog(
+                    `[DEDUP] ⚠️ ${finalCandidates.length - deduplicatedCandidates.length} candidatos rechazados (ya en historial). ` +
+                    `Quedaron ${deduplicatedCandidates.length} nuevos.`
+                );
+            }
+
+            if (deduplicatedCandidates.length === 0) {
+                onLog(`[ATTEMPT ${attempts}] ℹ️ Todos los candidatos de este intento fueron rechazados por deduplicación.`);
+                continue; // Try next attempt to find fresh leads
+            }
+
+            // Add successful leads to collection (only those that passed global dedup)
+            const leadsToAdd = deduplicatedCandidates;
 
             for (const lead of leadsToAdd) {
                 validLeads.push(lead);
