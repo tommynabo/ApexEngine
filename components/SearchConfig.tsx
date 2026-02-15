@@ -8,6 +8,7 @@ interface SearchConfigProps {
   onChange: (updates: Partial<SearchConfigState>) => void;
   onSearch: () => void;
   isSearching: boolean;
+  onOpenCriteria?: () => void;
   // Autopilot props
   autopilotEnabled: boolean;
   autopilotTime: string;
@@ -18,7 +19,7 @@ interface SearchConfigProps {
   autopilotRanToday: boolean;
 }
 
-export function SearchConfig({ config, onChange, onSearch, onStop, isSearching, autopilotEnabled, autopilotTime, autopilotQuantity, onAutopilotToggle, onAutopilotTimeChange, onAutopilotQuantityChange, autopilotRanToday }: SearchConfigProps & { onStop: () => void }) {
+export function SearchConfig({ config, onChange, onSearch, onStop, isSearching, onOpenCriteria, autopilotEnabled, autopilotTime, autopilotQuantity, onAutopilotToggle, onAutopilotTimeChange, onAutopilotQuantityChange, autopilotRanToday }: SearchConfigProps & { onStop: () => void }) {
   const [showTimePicker, setShowTimePicker] = useState(false); // Default 10 for auto-pilot
 
   // Helper to handle manual number input clearly
@@ -106,7 +107,15 @@ export function SearchConfig({ config, onChange, onSearch, onStop, isSearching, 
           </div>
         </div>
 
-        <div className="mt-6">
+        <div className="mt-6 space-y-3">
+          <button
+            onClick={onOpenCriteria}
+            disabled={isSearching}
+            className="w-full h-[40px] flex items-center justify-center rounded-lg font-bold text-sm transition-all shadow-md bg-slate-200/50 text-slate-700 hover:bg-slate-200 dark:bg-slate-800/50 dark:text-slate-300 dark:hover:bg-slate-800 disabled:opacity-50"
+          >
+            ✎ Criterio de Búsqueda
+          </button>
+
           {isSearching ? (
             <button
               onClick={onStop}

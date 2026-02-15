@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Header } from './components/Header';
 import { SearchConfig } from './components/SearchConfig';
+import { SearchCriteriaModal } from './components/SearchCriteriaModal';
 import { AgentTerminal } from './components/AgentTerminal';
 import { LeadsTable } from './components/LeadsTable';
 import { MessageModal } from './components/MessageModal';
@@ -43,6 +44,9 @@ function App() {
   const [autopilotEnabled, setAutopilotEnabled] = useState(autopilotService.getConfig().enabled);
   const [autopilotTime, setAutopilotTime] = useState(autopilotService.getConfig().scheduledTime);
   const [autopilotQuantity, setAutopilotQuantity] = useState(autopilotService.getConfig().leadsQuantity);
+
+  // Modal State
+  const [isCriteriaModalOpen, setIsCriteriaModalOpen] = useState(false);
 
   // Sound Effect
   const playGlassSound = () => {
@@ -332,6 +336,15 @@ function App() {
     setConfig(prev => ({ ...prev, ...updates }));
   };
 
+  const handleOpenCriteria = () => {
+    setIsCriteriaModalOpen(true);
+  };
+
+  const handleSaveCriteria = (newQuery: string) => {
+    setConfig(prev => ({ ...prev, query: newQuery }));
+    setIsCriteriaModalOpen(false);
+  };
+
   const handleViewSessionResults = (session: SearchSession) => {
     setSelectedHistorySession(session);
   };
@@ -367,6 +380,7 @@ function App() {
               onSearch={handleSearch}
               onStop={handleStop}
               isSearching={isSearching}
+              onOpenCriteria={handleOpenCriteria}
               autopilotEnabled={autopilotEnabled}
               autopilotTime={autopilotTime}
               autopilotQuantity={autopilotQuantity}
@@ -398,6 +412,14 @@ function App() {
         )}
 
       </main>
+
+      {/* Search Criteria Modal */}
+      <SearchCriteriaModal
+        isOpen={isCriteriaModalOpen}
+        onClose={() => setIsCriteriaModalOpen(false)}
+        currentQuery={config.query}
+        onSave={handleSaveCriteria}
+      />
 
       {/* Message Draft Modal */}
       {selectedLead && (
