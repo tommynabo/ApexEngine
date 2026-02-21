@@ -1,6 +1,6 @@
 import React from 'react';
 import { Lead } from '../lib/types';
-import { User, Mail, MessageSquare, ExternalLink, CheckCircle2, Clock, Database, Sparkles } from 'lucide-react';
+import { User, Mail, MessageSquare, ExternalLink, CheckCircle2, Clock, Database, Sparkles, Linkedin } from 'lucide-react';
 
 interface LeadsTableProps {
   leads: Lead[];
@@ -98,26 +98,12 @@ export function LeadsTable({ leads, onViewMessage }: LeadsTableProps) {
                 </td>
                 <td className="px-6 py-4 align-top">
                   {lead.decisionMaker ? (
-                    <div className="flex flex-col gap-1">
-                      <div className="flex flex-col">
-                        <div className="flex items-center gap-1.5">
-                          <User className="w-3 h-3 text-primary" />
-                          <span className="text-sm font-medium">{lead.decisionMaker.name}</span>
-                        </div>
-                        <span className="text-xs text-muted-foreground pl-4.5">{lead.decisionMaker.role}</span>
+                    <div className="flex flex-col">
+                      <div className="flex items-center gap-1.5">
+                        <User className="w-3 h-3 text-primary" />
+                        <span className="text-sm font-medium">{lead.decisionMaker.name}</span>
                       </div>
-
-                      {lead.decisionMaker.linkedin && (
-                        <a
-                          href={lead.decisionMaker.linkedin}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="text-xs text-[#0077b5] hover:underline flex items-center gap-1 pl-4.5 font-medium"
-                        >
-                          <span>LinkedIn Profile</span>
-                          <ExternalLink className="w-3 h-3" />
-                        </a>
-                      )}
+                      <span className="text-xs text-muted-foreground pl-4.5">{lead.decisionMaker.role}</span>
                     </div>
                   ) : (
                     <span className="text-xs text-muted-foreground italic">Pendiente...</span>
@@ -136,6 +122,17 @@ export function LeadsTable({ leads, onViewMessage }: LeadsTableProps) {
                         <span className="w-3 h-3 flex items-center justify-center font-bold">#</span>
                         <span>{lead.decisionMaker.phone}</span>
                       </div>
+                    )}
+                    {lead.decisionMaker?.linkedin && (
+                      <a
+                        href={lead.decisionMaker.linkedin}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="flex items-center gap-1.5 text-xs text-blue-400 hover:text-blue-300 transition-colors mt-1"
+                      >
+                        <Linkedin className="w-3 h-3" />
+                        <span>Ver Perfil</span>
+                      </a>
                     )}
                   </div>
                 </td>
