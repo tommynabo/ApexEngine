@@ -99,14 +99,11 @@ function App() {
     try {
       const { data } = await supabase
         .from('profiles')
-        .select('target_icp, full_name')
+        .select('id, full_name, email')
         .eq('id', uid)
         .single();
 
       if (data) {
-        if (data.target_icp) {
-          console.log('Loaded Profile ICP:', data.target_icp);
-        }
         if (data.full_name) {
           setUserName(data.full_name);
         }
