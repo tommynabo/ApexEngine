@@ -97,6 +97,26 @@ function App() {
 
   const loadProfile = async (uid: string) => {
     try {
+      // First, get user email from auth session
+      const { data: { session } } = await supabase.auth.getSession();
+      const userEmail = session?.user?.email || '';
+
+      // DEFENSIVE: Ensure profile exists (upsert)
+      // This fixes the case where the user was created BEFORE the trigger existed
+      const { error: upsertError } = await supabase
+        .from('profiles')
+        .upsert({
+          id: uid,
+          email: userEmail,
+          full_name: userEmail.split('@')[0], // fallback name from email
+          updated_at: new Date().toISOString()
+        }, { onConflict: 'id' });
+
+      if (upsertError) {
+        console.warn('[Profile] Upsert warning:', upsertError.message);
+      }
+
+      // Now load the profile
       const { data } = await supabase
         .from('profiles')
         .select('id, full_name, email')
@@ -409,7 +429,7 @@ function App() {
           <div className="animate-[fadeIn_0.3s_ease-out]">
             <div className="max-w-4xl mx-auto mb-10 text-center space-y-2">
               <h1 className="text-3xl md:text-4xl font-bold tracking-tight">
-                Diego <span className="text-primary">LeadOS</span>
+                Apex<span className="text-primary">Engine</span>
               </h1>
             </div>
 

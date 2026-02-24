@@ -50,25 +50,66 @@ CREATE TRIGGER on_profile_created
 -- ========================================
 
 -- Drop existing policies (idempotent - no error si no existen)
+DROP POLICY IF EXISTS "Users can view their own profile" ON profiles;
+DROP POLICY IF EXISTS "Users can insert their own profile" ON profiles;
+DROP POLICY IF EXISTS "Users can update their own profile" ON profiles;
 DROP POLICY IF EXISTS "Users can insert their own search history" ON search_history;
 DROP POLICY IF EXISTS "Users can insert their own leads" ON leads;
 DROP POLICY IF EXISTS "Users can update their own search history" ON search_history;
 DROP POLICY IF EXISTS "Users can update their own leads" ON leads;
-DROP POLICY IF EXISTS "Users can update their own profile" ON profiles;
+DROP POLICY IF EXISTS "Users can view their own search history" ON search_history;
+DROP POLICY IF EXISTS "Users can view their own leads" ON leads;
+DROP POLICY IF EXISTS "Users can view their own search criteria" ON search_criteria;
+DROP POLICY IF EXISTS "Users can insert their own search criteria" ON search_criteria;
+DROP POLICY IF EXISTS "Users can update their own search criteria" ON search_criteria;
+DROP POLICY IF EXISTS "Users can view their own messages" ON message_templates;
+DROP POLICY IF EXISTS "Users can insert their own messages" ON message_templates;
+DROP POLICY IF EXISTS "Users can update their own messages" ON message_templates;
+DROP POLICY IF EXISTS "Users can view their own contact log" ON daily_contact_log;
+DROP POLICY IF EXISTS "Users can insert their own contact log" ON daily_contact_log;
+DROP POLICY IF EXISTS "Users can view and update their own config" ON user_configuration;
+DROP POLICY IF EXISTS "Users can view their own usage" ON api_usage_tracking;
+DROP POLICY IF EXISTS "Users can view their own deduplication log" ON deduplication_log;
+DROP POLICY IF EXISTS "Public can read system prompts" ON system_prompts;
 
--- Create new ones with correct permissions
+-- ========================================
+-- PROFILES: SELECT, INSERT, UPDATE
+-- ========================================
+CREATE POLICY "Users can view their own profile"
+  ON profiles FOR SELECT USING (auth.uid() = id);
+
+CREATE POLICY "Users can insert their own profile"
+  ON profiles FOR INSERT
+  WITH CHECK (auth.uid() = id);
+
+CREATE POLICY "Users can update their own profile"
+  ON profiles FOR UPDATE 
+  USING (auth.uid() = id)
+  WITH CHECK (auth.uid() = id);
+
+-- ========================================
+-- SEARCH_HISTORY: SELECT, INSERT, UPDATE
+-- ========================================
+CREATE POLICY "Users can view their own search history"
+  ON search_history FOR SELECT USING (auth.uid() = user_id);
+
 CREATE POLICY "Users can insert their own search history"
   ON search_history FOR INSERT 
   WITH CHECK (auth.uid() = user_id);
 
-CREATE POLICY "Users can insert their own leads"
-  ON leads FOR INSERT 
-  WITH CHECK (auth.uid() = user_id);
-
--- Also allow updates
 CREATE POLICY "Users can update their own search history"
   ON search_history FOR UPDATE 
   USING (auth.uid() = user_id)
+  WITH CHECK (auth.uid() = user_id);
+
+-- ========================================
+-- LEADS: SELECT, INSERT, UPDATE
+-- ========================================
+CREATE POLICY "Users can view their own leads"
+  ON leads FOR SELECT USING (auth.uid() = user_id);
+
+CREATE POLICY "Users can insert their own leads"
+  ON leads FOR INSERT 
   WITH CHECK (auth.uid() = user_id);
 
 CREATE POLICY "Users can update their own leads"
@@ -76,7 +117,79 @@ CREATE POLICY "Users can update their own leads"
   USING (auth.uid() = user_id)
   WITH CHECK (auth.uid() = user_id);
 
-CREATE POLICY "Users can update their own profile"
-  ON profiles FOR UPDATE 
-  USING (auth.uid() = id)
-  WITH CHECK (auth.uid() = id);
+-- ========================================
+-- SEARCH_CRITERIA: SELECT, INSERT, UPDATE
+-- ========================================
+CREATE POLICY "Users can view their own search criteria"
+  ON search_criteria FOR SELECT USING (auth.uid() = user_id);
+
+CREATE POLICY "Users can insert their own search criteria"
+  ON search_criteria FOR INSERT
+  WITH CHECK (auth.uid() = user_id);
+
+CREATE POLICY "Users can update their own search criteria"
+  ON search_criteria FOR UPDATE
+  USING (auth.uid() = user_id)
+  WITH CHECK (auth.uid() = user_id);
+
+-- ========================================
+-- MESSAGE_TEMPLATES: SELECT, INSERT, UPDATE
+-- ========================================
+CREATE POLICY "Users can view their own messages"
+  ON message_templates FOR SELECT USING (auth.uid() = user_id);
+
+CREATE POLICY "Users can insert their own messages"
+  ON message_templates FOR INSERT
+  WITH CHECK (auth.uid() = user_id);
+
+CREATE POLICY "Users can update their own messages"
+  ON message_templates FOR UPDATE
+  USING (auth.uid() = user_id)
+  WITH CHECK (auth.uid() = user_id);
+
+-- ========================================
+-- DAILY_CONTACT_LOG: SELECT, INSERT
+-- ========================================
+CREATE POLICY "Users can view their own contact log"
+  ON daily_contact_log FOR SELECT USING (auth.uid() = user_id);
+
+CREATE POLICY "Users can insert their own contact log"
+  ON daily_contact_log FOR INSERT
+  WITH CHECK (auth.uid() = user_id);
+
+-- ========================================
+-- USER_CONFIGURATION: ALL
+-- ========================================
+CREATE POLICY "Users can view and update their own config"
+  ON user_configuration FOR ALL USING (auth.uid() = user_id);
+
+-- ========================================
+-- API_USAGE_TRACKING: SELECT
+-- ========================================
+CREATE POLICY "Users can view their own usage"
+  ON api_usage_tracking FOR SELECT USING (auth.uid() = user_id);
+
+-- ========================================
+-- DEDUPLICATION_LOG: SELECT
+-- ========================================
+CREATE POLICY "Users can view their own deduplication log"
+  ON deduplication_log FOR SELECT USING (auth.uid() = user_id);
+
+-- ========================================
+-- SYSTEM_PROMPTS: Public read
+-- ========================================
+CREATE POLICY "Public can read system prompts"
+  ON system_prompts FOR SELECT USING (true);
+
+-- ========================================
+-- BACKFILL: Create profiles for ALL existing auth users
+-- who don't have a profile yet
+-- ========================================
+INSERT INTO public.profiles (id, email, full_name)
+SELECT 
+  au.id, 
+  au.email, 
+  COALESCE(au.raw_user_meta_data->>'full_name', split_part(au.email, '@', 1))
+FROM auth.users au
+LEFT JOIN public.profiles p ON p.id = au.id
+WHERE p.id IS NULL;
