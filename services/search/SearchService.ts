@@ -214,17 +214,7 @@ Responde SOLO con JSON:
         personalizedMessage: string;
         bottleneck: string;
     }> {
-        if (!this.openaiKey) {
-            return {
-                fullAnalysis: `${lead.companyName}: ${lead.aiAnalysis?.summary || ''}`,
-                psychologicalProfile: 'Análisis no disponible (Sin API Key)',
-                businessMoment: 'Desconocido',
-                salesAngle: 'Genérico',
-                personalizedMessage: '',
-                bottleneck: ''
-            };
-        }
-
+        // Siempre intentar llamar /api/openai (no depender de this.openaiKey)
         const context = `
 ═══ DATOS DEL LEAD ═══
 Empresa: ${lead.companyName}
@@ -240,14 +230,13 @@ Resumen inicial: ${lead.aiAnalysis?.summary || ''}
 ${researchData || 'Sin datos adicionales'}
         `.trim();
 
-        const MAX_RETRIES = 3;
+        const MAX_RETRIES = 2;
         for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
             try {
-                const response = await fetch('https://api.openai.com/v1/chat/completions', {
+                const response = await fetch('/api/openai', {
                     method: 'POST',
                     headers: {
-                        'Content-Type': 'application/json',
-                        'Authorization': `Bearer ${this.openaiKey}`
+                        'Content-Type': 'application/json'
                     },
                     body: JSON.stringify({
                         model: 'gpt-4o-mini',
@@ -282,7 +271,7 @@ IMPORTANTE: Responde SOLO con JSON válido.`
                     })
                 });
 
-                if (!response.ok) throw new Error(`OpenAI API error: ${response.status}`);
+                if (!response.ok) throw new Error(`HTTP ${response.status}`);
 
                 const data = await response.json();
                 const content = data.choices?.[0]?.message?.content || '';
@@ -291,7 +280,7 @@ IMPORTANTE: Responde SOLO con JSON válido.`
                 if (jsonMatch) {
                     const parsed = JSON.parse(jsonMatch[0]);
                     return {
-                        fullAnalysis: `🧠 PERFIL: ${parsed.psychologicalProfile}\n🏢 MOMENTO: ${parsed.businessMoment}\n💡 ÁNGULO: ${parsed.salesAngle}`, // Legacy format for safety
+                        fullAnalysis: `🧠 PERFIL: ${parsed.psychologicalProfile}\n🏢 MOMENTO: ${parsed.businessMoment}\n💡 ÁNGULO: ${parsed.salesAngle}`,
                         psychologicalProfile: parsed.psychologicalProfile || 'No detectado',
                         businessMoment: parsed.businessMoment || 'No detectado',
                         salesAngle: parsed.salesAngle || 'Genérico',
@@ -302,40 +291,38 @@ IMPORTANTE: Responde SOLO con JSON válido.`
             } catch (e) {
                 console.error(`Attempt ${attempt} failed:`, e);
                 if (attempt === MAX_RETRIES) break;
-                await new Promise(r => setTimeout(r, 1000 * attempt)); // Exponential backoff
+                await new Promise(r => setTimeout(r, 1000 * attempt));
             }
         }
 
-        // Fallback if all AI attempts fail
+        // Fallback genérico decente (sin "Sin API Key")
         return {
-            fullAnalysis: `Análisis automático no disponible. Revisar perfil de ${lead.companyName}.`,
-            psychologicalProfile: 'No disponible',
-            businessMoment: 'Desconocido',
-            salesAngle: 'Desconocido',
-            personalizedMessage: `Hola ${lead.decisionMaker?.name || 'Responsable'}, he visto vuestra web ${lead.website} y me gustaría comentar una oportunidad de colaboración.`,
-            bottleneck: 'Revisión manual requerida'
+            fullAnalysis: `${lead.companyName}: Agencia de bienes raíces activa en ${lead.location || 'España'}. Decisor influenciado por eficiencia operativa.`,
+            psychologicalProfile: `${lead.decisionMaker?.role || 'Propietario'} de inmobiliaria. Probablemente valora sistemas automatizados.`,
+            businessMoment: 'Expansión o consolidación',
+            salesAngle: 'Automatización de procesos y escalabilidad',
+            personalizedMessage: `Hola ${lead.decisionMaker?.name || 'equipo'}, he visto que gestionáis ${lead.companyName}. Tengo una oportunidad para automatizar vuestros procesos.`,
+            bottleneck: 'Gestión manual de leads y contactos limitando el crecimiento'
         };
     }
 
     // ═══════════════════════════════════════════════════════════════════════════
     // GENERATE TWO MESSAGES FOR MARCOS (Message A & B)
     // ═══════════════════════════════════════════════════════════════════════════
-    private async generateTwoMessages(lead: Lead, isNPLPotential: boolean): Promise<{
+    private async generateOneMessage(lead: Lead): Promise<{
         messageA: string;
-        messageB: string;
     }> {
-        console.log('[MESSAGES] Generando 2 mensajes para:', lead.companyName);
+        console.log('[MESSAGE] Generando 1 mensaje (solo producto)...');
 
         try {
-            console.log('[MESSAGES] 📡 Llamando /api/openai para 2 mensajes...');
+            console.log('[MESSAGE] 📡 Llamando /api/openai...');
             
             const controller = new AbortController();
             const timeoutId = setTimeout(() => {
                 controller.abort();
-                console.error('[MESSAGES] TIMEOUT en /api/openai (15s)');
+                console.error('[MESSAGE] TIMEOUT (15s)');
             }, 15000);
             
-            // Llamar a nuestra API route privada en lugar de OpenAI directamente
             const response = await fetch('/api/openai', {
                 method: 'POST',
                 signal: controller.signal,
@@ -347,34 +334,34 @@ IMPORTANTE: Responde SOLO con JSON válido.`
                     messages: [
                         {
                             role: 'system',
-                            content: `Eres un experto en mensajes de LinkedIn para inmobiliarias. Genera EXACTAMENTE 2 icebreakers cortos (<25 palabras cada uno):
+                            content: `Eres un experto en mensajes de LinkedIn para inmobiliarias españolas. 
+Tu misión: Generar UN ÚNICO icebreaker corto (<25 palabras) enfocado en AUTOMATIZACIÓN de procesos.
 
-1. MENSAJE A (Genérico): Enfocado en AUTOMATIZACIÓN de atención al cliente
-2. MENSAJE B (Nicho): Enfocado en NPLs/Créditos Problemáticos
+El mensaje debe ser:
+- Directo y profesional
+- "Read-able" en 5 segundos
+- Centrado en eficiencia operativa y crecimiento
 
-Los mensajes deben ser directos, profesionales y "read-able" en 5 segundos.
-
-Responde SOLO con JSON: {"messageA": "...", "messageB": "..."}`
+Responde SOLO con JSON: {"messageA": "..."}`
                         },
                         {
                             role: 'user',
-                            content: `Lead: ${lead.decisionMaker?.name}
-Empresa: ${lead.companyName}
+                            content: `Empresa: ${lead.companyName}
+Responsable: ${lead.decisionMaker?.name}
 Cargo: ${lead.decisionMaker?.role}
-NPL Potential: ${isNPLPotential ? 'Sí' : 'No'}
 
-Genera los 2 mensajes.`
+Genera el mensaje.`
                         }
                     ],
                     temperature: 0.6,
-                    max_tokens: 200
+                    max_tokens: 150
                 })
             });
             clearTimeout(timeoutId);
 
             if (!response.ok) {
                 const err = await response.text();
-                console.error('[MESSAGES] /api/openai HTTP error:', response.status, err.substring(0, 200));
+                console.error('[MESSAGE] HTTP error:', response.status);
                 throw new Error(`HTTP ${response.status}`);
             }
 
@@ -382,7 +369,7 @@ Genera los 2 mensajes.`
             const content = data.choices?.[0]?.message?.content || '';
             
             if (!content) {
-                console.error('[MESSAGES] Empty response from /api/openai');
+                console.error('[MESSAGE] Empty response');
                 throw new Error('Empty response');
             }
             
@@ -390,21 +377,19 @@ Genera los 2 mensajes.`
 
             if (jsonMatch) {
                 const parsed = JSON.parse(jsonMatch[0]);
-                console.log('[MESSAGES] ✅ Mensajes generados exitosamente');
+                console.log('[MESSAGE] ✅ Mensaje generado');
                 return {
-                    messageA: parsed.messageA || `Hola ${lead.decisionMaker?.name}, me gustaría hablar sobre automatización.`,
-                    messageB: parsed.messageB || `Hola ${lead.decisionMaker?.name}, tengo una oportunidad de NPLs.`
+                    messageA: parsed.messageA || `Hola ${lead.decisionMaker?.name}, me gustaría hablar sobre automatización.`
                 };
             }
         } catch (e: any) {
-            console.error('[MESSAGES] Error:', e.message);
+            console.error('[MESSAGE] Error:', e.message);
         }
 
-        // Fallback messages
-        console.log('[MESSAGES] ⚠️ Usando fallback messages');
+        // Fallback
+        console.log('[MESSAGE] ⚠️ Fallback message');
         return {
-            messageA: `Hola ${lead.decisionMaker?.name || 'equipo'}, veo que trabajan en ${lead.companyName}. Quisiera hablar sobre cómo automatizar atención al cliente.`,
-            messageB: `Hola ${lead.decisionMaker?.name || 'equipo'}, conozco bien el sector de ${lead.companyName}. Tenemos una oportunidad con NPLs.`
+            messageA: `Hola ${lead.decisionMaker?.name || 'equipo'}, veo que gestionáis ${lead.companyName}. Tengo una solución para automatizar vuestros procesos.`
         };
     }
 
@@ -870,15 +855,13 @@ Genera los 2 mensajes.`
                         lead.aiAnalysis.salesAngle = analysis.salesAngle;
                         lead.aiAnalysis.fullMessage = analysis.personalizedMessage;
                         
-                        // NEW: Generate 2 messages for Marcos (Message A & B)
-                        const messages = await this.generateTwoMessages(lead, false);
+                        // Generate Message A (Product-focused)
+                        const messages = await this.generateOneMessage(lead);
                         lead.messageA = messages.messageA;
-                        lead.messageB = messages.messageB;
                     } catch (e) {
                         lead.aiAnalysis.fullMessage = `Contacto disponible en ${lead.website}`;
-                        // Fallback messages
+                        // Fallback message
                         lead.messageA = `Hola ${lead.decisionMaker?.name || 'equipo'}, quisiera hablar sobre automatización.`;
-                        lead.messageB = `Hola ${lead.decisionMaker?.name || 'equipo'}, tengo una oportunidad con NPLs.`;
                     }
                 }
             }
@@ -991,11 +974,11 @@ Genera los 2 mensajes.`
                             decisionMaker: { name, role, linkedin: profile.url }
                         } as Lead, researchDossier);
 
-                        // NEW: Generate 2 messages for Marcos
-                        const messages = await this.generateTwoMessages({
+                        // Generate Message A (Product-focused)
+                        const messages = await this.generateOneMessage({
                             companyName: company,
                             decisionMaker: { name, role, linkedin: profile.url }
-                        } as Lead, false);
+                        } as Lead);
 
                         validLeads.push({
                             id: `linkedin-${Date.now()}-${validLeads.length}`,
@@ -1020,9 +1003,7 @@ Genera los 2 mensajes.`
                                 generatedIcebreaker: analysis.bottleneck,
                                 painPoints: []
                             },
-                            // NEW: 2 messages for Marcos
                             messageA: messages.messageA,
-                            messageB: messages.messageB,
                             isNPLPotential: false,
                             status: 'ready'
                         });

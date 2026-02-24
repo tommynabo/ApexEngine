@@ -134,16 +134,18 @@ export function MessageModal({ lead, onClose, onApprove }: MessageModalProps) {
 
             {/* Content */}
             <div className="p-6 grid gap-6">
-               {/* Lead Info Summary */}
-               <div className="bg-secondary/20 p-4 rounded-lg border border-border/50">
-                  <h4 className="text-xs font-bold text-muted-foreground uppercase mb-2">Información del Lead</h4>
-                  <div className="grid grid-cols-2 gap-2 text-sm">
-                     <div><span className="text-muted-foreground">Email:</span> <span className="text-foreground">{lead.decisionMaker?.email || 'No disponible'}</span></div>
-                     <div><span className="text-muted-foreground">Teléfono:</span> <span className="text-foreground">{lead.decisionMaker?.phone || 'No disponible'}</span></div>
-                     <div><span className="text-muted-foreground">Web:</span> <span className="text-foreground">{lead.website || 'No disponible'}</span></div>
-                     <div><span className="text-muted-foreground">Ubicación:</span> <span className="text-foreground">{lead.location || 'No disponible'}</span></div>
+               {/* Lead Info Summary - Solo para sources no-LinkedIn */}
+               {lead.source !== 'linkedin' && (
+                  <div className="bg-secondary/20 p-4 rounded-lg border border-border/50">
+                     <h4 className="text-xs font-bold text-muted-foreground uppercase mb-2">Información del Lead</h4>
+                     <div className="grid grid-cols-2 gap-2 text-sm">
+                        <div><span className="text-muted-foreground">Email:</span> <span className="text-foreground">{lead.decisionMaker?.email || 'No disponible'}</span></div>
+                        <div><span className="text-muted-foreground">Teléfono:</span> <span className="text-foreground">{lead.decisionMaker?.phone || 'No disponible'}</span></div>
+                        <div><span className="text-muted-foreground">Web:</span> <span className="text-foreground">{lead.website || 'No disponible'}</span></div>
+                        <div><span className="text-muted-foreground">Ubicación:</span> <span className="text-foreground">{lead.location || 'No disponible'}</span></div>
+                     </div>
                   </div>
-               </div>
+               )}
 
                {/* Psychological Profile & Deep Analysis - STRUCTURED VIEW */}
                {(lead.aiAnalysis?.psychologicalProfile || lead.aiAnalysis?.fullAnalysis) && (

@@ -116,37 +116,9 @@ export function LeadsCards({ leads, onMarkContacted, onMarkDiscarded }: LeadsCar
             </div>
           )}
 
-          {/* Message B - NPL */}
-          {activeLead.messageB && (
-            <div className="bg-amber-500/10 border border-amber-500/30 rounded-lg p-4">
-              <div className="flex items-center justify-between mb-3">
-                <h3 className="font-semibold text-sm text-amber-300">Mensaje B - NPLs (Nicho)</h3>
-                <button
-                  onClick={() => handleCopyMessage(activeLead.messageB!, activeLead.id)}
-                  className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
-                    copiedId === activeLead.id && activeLead.messageB
-                      ? 'bg-green-500/20 text-green-400 border border-green-500/30'
-                      : 'bg-amber-500/20 text-amber-400 border border-amber-500/30 hover:bg-amber-500/30'
-                  }`}
-                >
-                  {copiedId === activeLead.id ? (
-                    <>
-                      <Check className="w-3.5 h-3.5" /> Copiado
-                    </>
-                  ) : (
-                    <>
-                      <Copy className="w-3.5 h-3.5" /> Copiar
-                    </>
-                  )}
-                </button>
-              </div>
-              <p className="text-sm text-amber-200 leading-relaxed">{activeLead.messageB}</p>
-            </div>
-          )}
-
-          {!activeLead.messageA && !activeLead.messageB && (
+          {!activeLead.messageA && (
             <div className="bg-secondary/40 border border-dashed border-border rounded-lg p-4 text-center">
-              <p className="text-sm text-muted-foreground">Generando mensajes con IA...</p>
+              <p className="text-sm text-muted-foreground">Generando mensaje con IA...</p>
             </div>
           )}
         </div>

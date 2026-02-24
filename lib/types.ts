@@ -55,8 +55,7 @@ export interface Lead {
     salesAngle: string;           // New structured field
   };
   // New fields for Marcos' messages
-  messageA?: string; // Generic automation message
-  messageB?: string; // NPL-focused message
+  messageA?: string; // Automation-focused message
   isNPLPotential?: boolean;
   status: 'scraped' | 'enriched' | 'ready' | 'contacted' | 'replied' | 'discarded';
 }
