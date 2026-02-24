@@ -119,27 +119,28 @@ function App() {
   const loadHistory = async (uid: string) => {
     try {
       const { data, error } = await supabase
-        .from('search_results_diego')
+        .from('search_history')
         .select('*')
         .eq('user_id', uid)
-        .order('created_at', { ascending: false });
+        .order('executed_at', { ascending: false });
 
       if (error) {
-        console.error('Error loading history:', error);
+        console.error('DB Error loading history:', error);
+        addLog(`[DB] ⚠️ Error cargando historial: ${error.message}`);
         return;
       }
 
       if (data && data.length > 0) {
         const sessions: SearchSession[] = data.map(row => ({
-          id: row.session_id || row.id,
-          date: new Date(row.created_at),
-          query: row.query || '',
-          source: row.platform as any || 'gmail',
-          resultsCount: Array.isArray(row.lead_data) ? row.lead_data.length : 0,
-          leads: Array.isArray(row.lead_data) ? row.lead_data : []
+          id: row.id,
+          date: new Date(row.executed_at),
+          query: row.search_query || '',
+          source: row.source as any || 'linkedin',
+          resultsCount: row.results_extracted || 0,
+          leads: []
         }));
         setHistory(sessions);
-        console.log(`[HISTORY] Loaded ${sessions.length} sessions from cloud`);
+        console.log(`[HISTORY] Cargadas ${sessions.length} búsquedas del cloud`);
       }
     } catch (e) {
       console.error('Error loading history', e);
@@ -207,30 +208,30 @@ function App() {
         setHistory(prev => [newSession, ...prev]);
 
         // Save to Supabase (Cloud)
-        // Save to Supabase (Cloud)
         if (userId) {
           try {
-            console.log('[App] Saving to search_results_diego for user:', userId);
-            const { error } = await supabase.from('search_results_diego').insert({
+            const { error } = await supabase.from('search_history').insert({
               user_id: userId,
-              session_id: newSession.id,
-              platform: config.source,
-              query: config.query,
-              lead_data: results as any,
-              status: 'new'
+              search_query: config.query,
+              source: config.source,
+              mode: config.mode,
+              total_results: results.length,
+              results_extracted: results.length,
+              status: 'completed',
+              executed_at: new Date().toISOString(),
+              completed_at: new Date().toISOString()
             });
             if (error) {
               console.error('DB Error:', error);
-              addLog(`[ERROR] Fallo al guardar en base de datos: ${error.message}`);
+              addLog(`[DB] ⚠️ Error al guardar: ${error.message}`);
             }
-            else addLog('[DB] Resultados guardados en la nube de forma segura.');
+            else addLog('[DB] ✅ Resultados guardados en la nube.');
           } catch (err) {
             console.error('Failed to save results to DB', err);
             addLog(`[ERROR] Excepción al guardar: ${err}`);
           }
         } else {
-          console.warn('[App] No userId found, skipping Supabase save');
-          addLog('[ADVERTENCIA] No se pudo guardar en la nube (Usuario no identificado).');
+          addLog('[⚠️] No se guardó en la nube (usuario no autenticado).');
         }
 
         playGlassSound();
@@ -311,16 +312,22 @@ function App() {
 
         if (userId) {
           try {
-            const { error } = await supabase.from('search_results_diego').insert({
+            const { error } = await supabase.from('search_history').insert({
               user_id: userId,
-              session_id: newSession.id,
-              platform: autopilotConfig.source,
-              query: autopilotConfig.query,
-              lead_data: results as any,
-              status: 'autopilot'
+              search_query: autopilotConfig.query,
+              source: autopilotConfig.source,
+              mode: autopilotConfig.mode,
+              total_results: results.length,
+              results_extracted: results.length,
+              status: 'completed',
+              executed_at: new Date().toISOString(),
+              completed_at: new Date().toISOString()
             });
-            if (error) console.error('DB Error:', error);
-            else addLog('[AUTOPILOT] ✅ Resultados del piloto automático guardados en la nube.');
+            if (error) {
+              console.error('DB Error:', error);
+              addLog(`[AUTOPILOT] ⚠️ Error guardando: ${error.message}`);
+            }
+            else addLog('[AUTOPILOT] ✅ Resultados guardados.');
           } catch (err) {
             console.error('Failed to save autopilot results to DB', err);
           }
