@@ -4,6 +4,7 @@ import { SearchConfig } from './components/SearchConfig';
 import { SearchCriteriaModal } from './components/SearchCriteriaModal';
 import { AgentTerminal } from './components/AgentTerminal';
 import { LeadsTable } from './components/LeadsTable';
+import { LeadsCards } from './components/LeadsCards';
 import { MessageModal } from './components/MessageModal';
 import { LoginPage } from './components/LoginPage';
 import { CampaignsView } from './components/CampaignsView';
@@ -250,6 +251,36 @@ function App() {
     }
   };
 
+  // --- Lead Actions (for Marcos' workflow) ---
+  const handleMarkContacted = (leadId: string, messageType: 'a' | 'b') => {
+    setLeads(prevLeads =>
+      prevLeads.map(lead =>
+        lead.id === leadId
+          ? { ...lead, status: 'contacted' }
+          : lead
+      )
+    );
+    
+    // Log to Supabase if needed
+    if (userId) {
+      addLog(`[CONTACTO] Lead ${leadId} marcado como contactado (Mensaje ${messageType.toUpperCase()}).`);
+    }
+  };
+
+  const handleMarkDiscarded = (leadId: string) => {
+    setLeads(prevLeads =>
+      prevLeads.map(lead =>
+        lead.id === leadId
+          ? { ...lead, status: 'discarded' }
+          : lead
+      )
+    );
+    
+    if (userId) {
+      addLog(`[DESCARTADO] Lead ${leadId} descartado.`);
+    }
+  };
+
   // --- Autopilot Logic ---
 
   const executeAutopilotSearch = (quantity: number) => {
@@ -401,9 +432,10 @@ function App() {
               onToggleExpand={() => setTerminalExpanded(!terminalExpanded)}
             />
 
-            <LeadsTable
+            <LeadsCards
               leads={leads}
-              onViewMessage={setSelectedLead}
+              onMarkContacted={handleMarkContacted}
+              onMarkDiscarded={handleMarkDiscarded}
             />
           </div>
         )}

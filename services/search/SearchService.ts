@@ -308,6 +308,80 @@ IMPORTANTE: Responde SOLO con JSON válido.`
         };
     }
 
+    // ═══════════════════════════════════════════════════════════════════════════
+    // GENERATE TWO MESSAGES FOR MARCOS (Message A & B)
+    // ═══════════════════════════════════════════════════════════════════════════
+    private async generateTwoMessages(lead: Lead, isNPLPotential: boolean): Promise<{
+        messageA: string;
+        messageB: string;
+    }> {
+        if (!this.openaiKey) {
+            return {
+                messageA: `Hola ${lead.decisionMaker?.name}, he visto que trabajas en ${lead.companyName}. Me gustaría hablar sobre automatización de atención al cliente.`,
+                messageB: `Hola ${lead.decisionMaker?.name}, conozco tu experiencia en ${lead.companyName}. Tenemos una oportunidad interesante con NPLs.`
+            };
+        }
+
+        try {
+            const response = await fetch('https://api.openai.com/v1/chat/completions', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${this.openaiKey}`
+                },
+                body: JSON.stringify({
+                    model: 'gpt-4o-mini',
+                    messages: [
+                        {
+                            role: 'system',
+                            content: `Eres un experto en mensajes de LinkedIn para inmobiliarias. Genera EXACTAMENTE 2 icebreakers cortos (<25 palabras cada uno):
+
+1. MENSAJE A (Genérico): Enfocado en AUTOMATIZACIÓN de atención al cliente
+2. MENSAJE B (Nicho): Enfocado en NPLs/Créditos Problemáticos
+
+Los mensajes deben ser directos, profesionales y "read-able" en 5 segundos.
+
+Responde SOLO con JSON: {"messageA": "...", "messageB": "..."}`
+                        },
+                        {
+                            role: 'user',
+                            content: `Lead: ${lead.decisionMaker?.name}
+Empresa: ${lead.companyName}
+Cargo: ${lead.decisionMaker?.role}
+NPL Potential: ${isNPLPotential ? 'Sí' : 'No'}
+
+Genera los 2 mensajes.`
+                        }
+                    ],
+                    temperature: 0.6,
+                    max_tokens: 200
+                })
+            });
+
+            if (!response.ok) throw new Error('OpenAI API error');
+
+            const data = await response.json();
+            const content = data.choices?.[0]?.message?.content || '';
+            const jsonMatch = content.match(/\{[\s\S]*\}/);
+
+            if (jsonMatch) {
+                const parsed = JSON.parse(jsonMatch[0]);
+                return {
+                    messageA: parsed.messageA || `Hola ${lead.decisionMaker?.name}, me gustaría hablar sobre automatización.`,
+                    messageB: parsed.messageB || `Hola ${lead.decisionMaker?.name}, tengo una oportunidad de NPLs.`
+                };
+            }
+        } catch (e) {
+            console.error('Error generating messages:', e);
+        }
+
+        // Fallback messages
+        return {
+            messageA: `Hola ${lead.decisionMaker?.name || 'equipo'}, veo que trabajan en ${lead.companyName}. Quisiera hablar sobre cómo automatizar atención al cliente.`,
+            messageB: `Hola ${lead.decisionMaker?.name || 'equipo'}, conozco bien el sector de ${lead.companyName}. Tenemos una oportunidad con NPLs.`
+        };
+    }
+
     private async callApifyActor(actorId: string, input: any, onLog: LogCallback): Promise<any[]> {
         // Use local proxy to avoid CORS
         const baseUrl = '/api/apify';
@@ -668,8 +742,16 @@ IMPORTANTE: Responde SOLO con JSON válido.`
                         lead.aiAnalysis.businessMoment = analysis.businessMoment;
                         lead.aiAnalysis.salesAngle = analysis.salesAngle;
                         lead.aiAnalysis.fullMessage = analysis.personalizedMessage;
+                        
+                        // NEW: Generate 2 messages for Marcos (Message A & B)
+                        const messages = await this.generateTwoMessages(lead, false);
+                        lead.messageA = messages.messageA;
+                        lead.messageB = messages.messageB;
                     } catch (e) {
                         lead.aiAnalysis.fullMessage = `Contacto disponible en ${lead.website}`;
+                        // Fallback messages
+                        lead.messageA = `Hola ${lead.decisionMaker?.name || 'equipo'}, quisiera hablar sobre automatización.`;
+                        lead.messageB = `Hola ${lead.decisionMaker?.name || 'equipo'}, tengo una oportunidad con NPLs.`;
                     }
                 }
             }
@@ -778,6 +860,12 @@ IMPORTANTE: Responde SOLO con JSON válido.`
                             decisionMaker: { name, role, linkedin: profile.url }
                         } as Lead, researchDossier);
 
+                        // NEW: Generate 2 messages for Marcos
+                        const messages = await this.generateTwoMessages({
+                            companyName: company,
+                            decisionMaker: { name, role, linkedin: profile.url }
+                        } as Lead, false);
+
                         validLeads.push({
                             id: `linkedin-${Date.now()}-${validLeads.length}`,
                             source: 'linkedin',
@@ -801,6 +889,10 @@ IMPORTANTE: Responde SOLO con JSON válido.`
                                 generatedIcebreaker: analysis.bottleneck,
                                 painPoints: []
                             },
+                            // NEW: 2 messages for Marcos
+                            messageA: messages.messageA,
+                            messageB: messages.messageB,
+                            isNPLPotential: false,
                             status: 'ready'
                         });
 

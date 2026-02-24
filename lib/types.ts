@@ -2,6 +2,16 @@ export type PlatformSource = 'gmail' | 'linkedin';
 export type SearchMode = 'fast' | 'deep';
 export type PageView = 'login' | 'dashboard' | 'campaigns';
 
+export interface ImmobiliariasConfig {
+  targetIndustries: string[];
+  companySizes: string[];
+  requiredTitles: string[];
+  excludeTitles: string[];
+  dailyContactLimit: number;
+  enableNPLDetection: boolean;
+  batchScrapingStrategy: 'provincial' | 'alphabetical' | 'random';
+}
+
 export interface ProjectConfig {
   clientId: string;
   clientName: string;
@@ -15,6 +25,7 @@ export interface ProjectConfig {
     defaultDepth: number;
     defaultMode: SearchMode;
   };
+  immobiliariasConfig?: ImmobiliariasConfig;
 }
 
 export interface Lead {
@@ -43,7 +54,11 @@ export interface Lead {
     businessMoment: string;       // New structured field
     salesAngle: string;           // New structured field
   };
-  status: 'scraped' | 'enriched' | 'ready' | 'contacted' | 'replied';
+  // New fields for Marcos' messages
+  messageA?: string; // Generic automation message
+  messageB?: string; // NPL-focused message
+  isNPLPotential?: boolean;
+  status: 'scraped' | 'enriched' | 'ready' | 'contacted' | 'replied' | 'discarded';
 }
 
 export interface AdvancedFilter {
