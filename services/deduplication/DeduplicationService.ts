@@ -62,10 +62,10 @@ export class DeduplicationService {
     }
 
     try {
-      // Fetch all leads from user's history
+      // Fetch all leads from user's history (NEW SCHEMA: table 'leads')
       const { data, error } = await supabase
-        .from('search_results_diego')
-        .select('lead_data')
+        .from('leads')
+        .select('company_name, company_website, linkedin_url')
         .eq('user_id', userId);
 
       if (error) {
@@ -80,28 +80,22 @@ export class DeduplicationService {
 
       // Extract and normalize all previously scraped leads
       for (const row of data) {
-        if (Array.isArray(row.lead_data)) {
-          for (const lead of row.lead_data) {
-            // Add normalized website
-            if (lead.website) {
-              const normalizedUrl = this.normalizeUrl(lead.website);
-              existingWebsites.add(normalizedUrl);
-            }
+        // Add normalized website
+        if (row.company_website) {
+          const normalizedUrl = this.normalizeUrl(row.company_website);
+          existingWebsites.add(normalizedUrl);
+        }
 
-            // Add normalized company name
-            if (lead.companyName) {
-              const normalizedName = this.normalizeName(lead.companyName);
-              // IGNORE GENERIC NAMES from the "Existing" set
-              // This ensures we don't block new leads just because we have one "Empresa Desconocida"
-              if (
-                lead.companyName !== 'Sin Nombre' &&
-                lead.companyName !== 'Empresa Desconocida' &&
-                !normalizedName.includes('sin nombre') &&
-                !normalizedName.includes('empresa desconocida')
-              ) {
-                existingCompanyNames.add(normalizedName);
-              }
-            }
+        // Add normalized company name
+        if (row.company_name) {
+          const normalizedName = this.normalizeName(row.company_name);
+          if (
+            row.company_name !== 'Sin Nombre' &&
+            row.company_name !== 'Empresa Desconocida' &&
+            !normalizedName.includes('sin nombre') &&
+            !normalizedName.includes('empresa desconocida')
+          ) {
+            existingCompanyNames.add(normalizedName);
           }
         }
       }
@@ -204,14 +198,26 @@ export class DeduplicationService {
     }
 
     try {
-      const { error } = await supabase.from('search_results_diego').insert({
+      // Save each lead individually to the 'leads' table (new schema)
+      const leadsToInsert = leads.map(lead => ({
         user_id: userId,
-        session_id: sessionId,
-        platform: leads[0]?.source || 'gmail',
-        query: '', // Query is tracked separately
-        lead_data: leads,
-        created_at: new Date().toISOString()
-      });
+        search_id: sessionId,
+        name: lead.decisionMaker?.name || lead.companyName || '',
+        company_name: lead.companyName || '',
+        job_title: lead.decisionMaker?.role || '',
+        linkedin_url: lead.decisionMaker?.linkedin || '',
+        email: lead.decisionMaker?.email || '',
+        phone: lead.decisionMaker?.phone || '',
+        company_website: lead.website || '',
+        location: lead.location || '',
+        ai_summary: lead.aiAnalysis?.summary || '',
+        ai_pain_points: lead.aiAnalysis?.painPoints || [],
+        ai_business_moment: lead.aiAnalysis?.businessMoment || '',
+        ai_is_npl_potential: lead.isNPLPotential || false,
+        status: lead.status || 'scraped'
+      }));
+
+      const { error } = await supabase.from('leads').insert(leadsToInsert);
 
       if (error) {
         console.error('[DEDUP] Error saving leads:', error);

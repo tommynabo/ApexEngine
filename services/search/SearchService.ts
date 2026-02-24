@@ -387,15 +387,23 @@ Genera los 2 mensajes.`
         const baseUrl = '/api/apify';
         const startUrl = `${baseUrl}/acts/${actorId}/runs?token=${this.apiKey}`;
 
-        const startResponse = await fetch(startUrl, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(input)
-        });
+        onLog(`[APIFY] 📡 Lanzando actor ${actorId.substring(0, 8)}...`);
+
+        let startResponse: Response;
+        try {
+            startResponse = await fetch(startUrl, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(input)
+            });
+        } catch (networkError: any) {
+            throw new Error(`Network error llamando Apify (¿proxy /api/apify funciona?): ${networkError.message}`);
+        }
 
         if (!startResponse.ok) {
             const err = await startResponse.text();
-            throw new Error(`Error actor ${actorId}: ${err}`);
+            onLog(`[APIFY] ❌ HTTP ${startResponse.status}: ${err.substring(0, 200)}`);
+            throw new Error(`Error actor ${actorId}: HTTP ${startResponse.status} - ${err.substring(0, 200)}`);
         }
 
         const startData = await startResponse.json();
@@ -449,7 +457,12 @@ Genera los 2 mensajes.`
             this.apiKey = import.meta.env.VITE_APIFY_API_TOKEN || '';
             this.openaiKey = import.meta.env.VITE_OPENAI_API_KEY || '';
 
-            if (!this.apiKey) throw new Error("Falta VITE_APIFY_API_TOKEN en .env");
+            onLog(`[INIT] 🔑 API Key: ${this.apiKey ? '✅ presente (' + this.apiKey.substring(0, 10) + '...)' : '❌ FALTA'}`);
+            onLog(`[INIT] 🧠 OpenAI Key: ${this.openaiKey ? '✅ presente' : '⚠️ no configurada'}`);
+            onLog(`[INIT] 👤 UserId: ${this.userId || 'no autenticado'}`);
+            onLog(`[INIT] 🔎 Source: ${config.source} | Query: "${config.query}" | Max: ${config.maxResults}`);
+
+            if (!this.apiKey) throw new Error("Falta VITE_APIFY_API_TOKEN en .env — configúrala en Vercel → Settings → Environment Variables");
 
             // ═══════════════════════════════════════════════════════════════════════════
             // FASE 1: Pre-Flight - Descargar leads existentes del usuario
@@ -457,14 +470,17 @@ Genera los 2 mensajes.`
             onLog(`[DEDUP] 🔍 Iniciando verificación anti-duplicados...`);
             const { existingWebsites, existingCompanyNames } =
                 await deduplicationService.fetchExistingLeads(this.userId);
+            onLog(`[DEDUP] ✅ Pre-flight: ${existingWebsites.size} dominios, ${existingCompanyNames.size} empresas en historial`);
 
             onLog(`[IA] 🧠 Interpretando: "${config.query}"...`);
             const interpreted = await this.interpretQuery(config.query, config.source);
-            onLog(`[IA] ✅ Industria: ${interpreted.industry}`);
+            onLog(`[IA] ✅ Industria: ${interpreted.industry} | Roles: ${interpreted.targetRoles.join(', ')} | Zona: ${interpreted.location}`);
 
             if (config.source === 'linkedin') {
+                onLog(`[LINKEDIN] 🚀 Iniciando búsqueda LinkedIn...`);
                 await this.searchLinkedIn(config, interpreted, onLog, onComplete);
             } else {
+                onLog(`[GMAIL] 🚀 Iniciando búsqueda Gmail/Maps...`);
                 await this.searchGmail(
                     config, 
                     interpreted, 
@@ -476,7 +492,9 @@ Genera los 2 mensajes.`
             }
 
         } catch (error: any) {
+            console.error('[SearchService] FATAL ERROR:', error);
             onLog(`[ERROR] ❌ ${error.message}`);
+            onLog(`[ERROR] 📋 Stack: ${error.stack?.split('\n').slice(0, 3).join(' → ') || 'no stack'}`);
             onComplete([]);
         } finally {
             this.isRunning = false;
