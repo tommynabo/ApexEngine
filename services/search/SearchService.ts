@@ -13,7 +13,6 @@ const GOOGLE_SEARCH_SCRAPER = 'nFJndFXA5zjCTuudP'; // ID for apify/google-search
 export class SearchService {
     private isRunning = false;
     private apiKey: string = '';
-    private openaiKey: string = '';
     private userId: string | null = null; // For deduplication
 
     public stop() {
@@ -29,16 +28,6 @@ export class SearchService {
         targetRoles: string[];
         location: string;
     }> {
-        if (!this.openaiKey) {
-            console.warn('[INTERPRET] OpenAI no configurado, usando query as-is');
-            return {
-                searchQuery: userQuery,
-                industry: userQuery,
-                targetRoles: ['CEO', 'Fundador', 'Propietario', 'Director General'],
-                location: 'España'
-            };
-        }
-
         try {
             console.log('[INTERPRET] 📡 Llamando /api/openai...');
             const controller = new AbortController();
@@ -336,14 +325,6 @@ IMPORTANTE: Responde SOLO con JSON válido.`
         messageB: string;
     }> {
         console.log('[MESSAGES] Generando 2 mensajes para:', lead.companyName);
-        
-        if (!this.openaiKey) {
-            console.log('[MESSAGES] ⚠️ OpenAI no configurado, usando fallback');
-            return {
-                messageA: `Hola ${lead.decisionMaker?.name}, he visto que trabajas en ${lead.companyName}. Me gustaría hablar sobre automatización de atención al cliente.`,
-                messageB: `Hola ${lead.decisionMaker?.name}, conozco tu experiencia en ${lead.companyName}. Tenemos una oportunidad interesante con NPLs.`
-            };
-        }
 
         try {
             console.log('[MESSAGES] 📡 Llamando /api/openai para 2 mensajes...');
@@ -580,10 +561,9 @@ Genera los 2 mensajes.`
 
         try {
             this.apiKey = import.meta.env.VITE_APIFY_API_TOKEN || '';
-            this.openaiKey = import.meta.env.VITE_OPENAI_API_KEY || '';
 
             onLog(`[INIT] 🔑 API Key: ${this.apiKey ? '✅ presente (' + this.apiKey.substring(0, 10) + '...)' : '❌ FALTA'}`);
-            onLog(`[INIT] 🧠 OpenAI Key: ${this.openaiKey ? '✅ presente' : '⚠️ no configurada'}`);
+            onLog(`[INIT] 🧠 OpenAI: ✅ API route /api/openai disponible`);
             onLog(`[INIT] 👤 UserId: ${this.userId || 'no autenticado'}`);
             onLog(`[INIT] 🔎 Source: ${config.source} | Query: "${config.query}" | Max: ${config.maxResults}`);
 
