@@ -30,6 +30,7 @@ export class SearchService {
         location: string;
     }> {
         if (!this.openaiKey) {
+            console.warn('[INTERPRET] OpenAI key no configurada, usando query as-is');
             return {
                 searchQuery: userQuery,
                 industry: userQuery,
@@ -39,8 +40,13 @@ export class SearchService {
         }
 
         try {
+            console.log('[INTERPRET] 📡 Llamando OpenAI...');
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 15000); // 15 sec timeout
+            
             const response = await fetch('https://api.openai.com/v1/chat/completions', {
                 method: 'POST',
+                signal: controller.signal,
                 headers: {
                     'Content-Type': 'application/json',
                     'Authorization': `Bearer ${this.openaiKey}`
@@ -65,11 +71,25 @@ Responde SOLO con JSON:
                     max_tokens: 150
                 })
             });
+            clearTimeout(timeoutId);
+            
+            if (!response.ok) {
+                const err = await response.text();
+                console.error(`[INTERPRET] OpenAI HTTP ${response.status}:`, err.substring(0, 300));
+                throw new Error(`OpenAI HTTP ${response.status}`);
+            }
+            
             const data = await response.json();
             const match = data.choices?.[0]?.message?.content?.match(/\{[\s\S]*\}/);
-            if (match) return JSON.parse(match[0]);
-        } catch (e) { console.error(e); }
+            if (match) {
+                console.log('[INTERPRET] ✅ Query interpretada exitosamente');
+                return JSON.parse(match[0]);
+            }
+        } catch (e: any) {
+            console.error('[INTERPRET] Error:', e.message);
+        }
 
+        console.log('[INTERPRET] ⚠️ Fallback: usando query as-is');
         return { searchQuery: userQuery, industry: userQuery, targetRoles: ['CEO', 'Fundador', 'Propietario'], location: 'España' };
     }
 
@@ -315,7 +335,10 @@ IMPORTANTE: Responde SOLO con JSON válido.`
         messageA: string;
         messageB: string;
     }> {
+        console.log('[MESSAGES] Generando 2 mensajes para:', lead.companyName);
+        
         if (!this.openaiKey) {
+            console.log('[MESSAGES] ⚠️ OpenAI key no configurada, usando fallback');
             return {
                 messageA: `Hola ${lead.decisionMaker?.name}, he visto que trabajas en ${lead.companyName}. Me gustaría hablar sobre automatización de atención al cliente.`,
                 messageB: `Hola ${lead.decisionMaker?.name}, conozco tu experiencia en ${lead.companyName}. Tenemos una oportunidad interesante con NPLs.`
@@ -323,8 +346,17 @@ IMPORTANTE: Responde SOLO con JSON válido.`
         }
 
         try {
+            console.log('[MESSAGES] 📡 Llamando OpenAI para 2 mensajes...');
+            
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => {
+                controller.abort();
+                console.error('[MESSAGES] TIMEOUT en OpenAI (15s)');
+            }, 15000);
+            
             const response = await fetch('https://api.openai.com/v1/chat/completions', {
                 method: 'POST',
+                signal: controller.signal,
                 headers: {
                     'Content-Type': 'application/json',
                     'Authorization': `Bearer ${this.openaiKey}`
@@ -357,25 +389,38 @@ Genera los 2 mensajes.`
                     max_tokens: 200
                 })
             });
+            clearTimeout(timeoutId);
 
-            if (!response.ok) throw new Error('OpenAI API error');
+            if (!response.ok) {
+                const err = await response.text();
+                console.error('[MESSAGES] OpenAI HTTP error:', response.status, err.substring(0, 200));
+                throw new Error(`OpenAI HTTP ${response.status}`);
+            }
 
             const data = await response.json();
             const content = data.choices?.[0]?.message?.content || '';
+            
+            if (!content) {
+                console.error('[MESSAGES] Empty response from OpenAI');
+                throw new Error('OpenAI returned empty content');
+            }
+            
             const jsonMatch = content.match(/\{[\s\S]*\}/);
 
             if (jsonMatch) {
                 const parsed = JSON.parse(jsonMatch[0]);
+                console.log('[MESSAGES] ✅ Mensajes generados exitosamente');
                 return {
                     messageA: parsed.messageA || `Hola ${lead.decisionMaker?.name}, me gustaría hablar sobre automatización.`,
                     messageB: parsed.messageB || `Hola ${lead.decisionMaker?.name}, tengo una oportunidad de NPLs.`
                 };
             }
-        } catch (e) {
-            console.error('Error generating messages:', e);
+        } catch (e: any) {
+            console.error('[MESSAGES] Error:', e.message);
         }
 
         // Fallback messages
+        console.log('[MESSAGES] ⚠️ Usando fallback messages');
         return {
             messageA: `Hola ${lead.decisionMaker?.name || 'equipo'}, veo que trabajan en ${lead.companyName}. Quisiera hablar sobre cómo automatizar atención al cliente.`,
             messageB: `Hola ${lead.decisionMaker?.name || 'equipo'}, conozco bien el sector de ${lead.companyName}. Tenemos una oportunidad con NPLs.`
@@ -388,60 +433,140 @@ Genera los 2 mensajes.`
         const startUrl = `${baseUrl}/acts/${actorId}/runs?token=${this.apiKey}`;
 
         onLog(`[APIFY] 📡 Lanzando actor ${actorId.substring(0, 8)}...`);
+        console.log('[APIFY] POST a:', startUrl.substring(0, 100));
 
+        // STAGE 1: Iniciar actor con timeout
         let startResponse: Response;
         try {
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => {
+                controller.abort();
+                console.error('[APIFY] TIMEOUT en POST /runs (10s)');
+            }, 10000);
+
             startResponse = await fetch(startUrl, {
                 method: 'POST',
+                signal: controller.signal,
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(input)
             });
+            clearTimeout(timeoutId);
         } catch (networkError: any) {
+            console.error('[APIFY] Network error en POST /runs:', networkError.message);
             throw new Error(`Network error llamando Apify (¿proxy /api/apify funciona?): ${networkError.message}`);
         }
 
         if (!startResponse.ok) {
             const err = await startResponse.text();
-            onLog(`[APIFY] ❌ HTTP ${startResponse.status}: ${err.substring(0, 200)}`);
-            throw new Error(`Error actor ${actorId}: HTTP ${startResponse.status} - ${err.substring(0, 200)}`);
+            console.error(`[APIFY] HTTP ${startResponse.status}:`, err.substring(0, 300));
+            onLog(`[APIFY] ❌ HTTP ${startResponse.status} al lanzar actor`);
+            throw new Error(`Error actor ${actorId}: HTTP ${startResponse.status}`);
         }
 
-        const startData = await startResponse.json();
-        const runId = startData.data.id;
-        const defaultDatasetId = startData.data.defaultDatasetId;
+        let startData: any;
+        try {
+            startData = await startResponse.json();
+        } catch (e: any) {
+            console.error('[APIFY] Error parsing JSON response:', e);
+            throw new Error('Apify: Invalid JSON response');
+        }
 
-        onLog(`[APIFY] Actor iniciado`);
+        const runId = startData.data?.id;
+        const defaultDatasetId = startData.data?.defaultDatasetId;
 
+        if (!runId || !defaultDatasetId) {
+            console.error('[APIFY] Missing runId/defaultDatasetId:', { runId, defaultDatasetId });
+            throw new Error('Apify: Response missing runId or defaultDatasetId');
+        }
+
+        onLog(`[APIFY] ✅ Actor iniciado (${runId.substring(0, 8)})`);
+        console.log('[APIFY] Run started. Waiting for completion...');
+
+        // STAGE 2: Poll status con timeout MAX 2 minutos
         let isFinished = false;
         let pollCount = 0;
-        while (!isFinished && this.isRunning && pollCount < 60) {
+        const MAX_POLLS = 24; // 24 * 5s = 120s
+
+        while (!isFinished && this.isRunning && pollCount < MAX_POLLS) {
             await new Promise(r => setTimeout(r, 5000));
             pollCount++;
 
-            const statusRes = await fetch(`${baseUrl}/acts/${actorId}/runs/${runId}?token=${this.apiKey}`);
-            const statusData = await statusRes.json();
-            const status = statusData.data.status;
+            try {
+                const statusUrl = `${baseUrl}/acts/${actorId}/runs/${runId}?token=${this.apiKey}`;
+                const statusRes = await fetch(statusUrl);
 
-            if (pollCount % 4 === 0) onLog(`[APIFY] Estado: ${status}`);
+                if (!statusRes.ok) {
+                    console.error(`[APIFY] Status fetch HTTP ${statusRes.status}`);
+                    onLog(`[APIFY] ⚠️ Error obtener status (HTTP ${statusRes.status})`);
+                    continue;
+                }
 
-            if (status === 'SUCCEEDED') isFinished = true;
-            else if (status === 'FAILED' || status === 'ABORTED') throw new Error(`Actor falló: ${status}`);
+                const statusData = await statusRes.json();
+                const status = statusData.data?.status;
+
+                if (!status) {
+                    console.error('[APIFY] Missing status in response:', statusData);
+                    continue;
+                }
+
+                if (pollCount % 3 === 1) {
+                    console.log(`[APIFY] Poll ${pollCount}/${MAX_POLLS}: ${status}`);
+                    onLog(`[APIFY] Estado: ${status} (${pollCount * 5}s)`);
+                }
+
+                if (status === 'SUCCEEDED') {
+                    isFinished = true;
+                    console.log('[APIFY] ✅ SUCCEEDED after', pollCount * 5, 'seconds');
+                } else if (status === 'FAILED' || status === 'ABORTED') {
+                    console.error('[APIFY] Actor failed/aborted:', status);
+                    throw new Error(`Actor ${status}`);
+                }
+            } catch (pollError: any) {
+                console.error('[APIFY] Polling error:', pollError?.message);
+                if (pollError.message?.includes('FAILED') || pollError.message?.includes('ABORTED')) {
+                    throw pollError;
+                }
+            }
         }
 
-        if (!this.isRunning) return [];
-
-        const itemsRes = await fetch(`${baseUrl}/datasets/${defaultDatasetId}/items?token=${this.apiKey}`);
-        const items = await itemsRes.json();
-        
-        onLog(`[APIFY] ✅ Dataset completado: ${Array.isArray(items) ? items.length : 0} items retornados`);
-        if (Array.isArray(items) && items.length > 0) {
-            const sample = items[0];
-            const hasWebsite = sample.website ?? sample.websiteUrl ?? sample.link ?? false;
-            const hasEmail = sample.email ?? sample.emails ?? false;
-            onLog(`[APIFY] 📊 Muestra: website=${!!hasWebsite}, email=${!!hasEmail}`);
+        if (!isFinished) {
+            console.error('[APIFY] TIMEOUT after', MAX_POLLS * 5, 'seconds');
+            throw new Error(`Apify timeout: No completó en ${MAX_POLLS * 5}s`);
         }
-        
-        return Array.isArray(items) ? items : [];
+
+        if (!this.isRunning) {
+            console.log('[APIFY] Search stopped by user');
+            return [];
+        }
+
+        // STAGE 3: Get dataset
+        console.log('[APIFY] Fetching dataset:', defaultDatasetId);
+        onLog(`[APIFY] 📥 Descargando dataset...`);
+
+        try {
+            const itemsUrl = `${baseUrl}/datasets/${defaultDatasetId}/items?token=${this.apiKey}`;
+            const itemsRes = await fetch(itemsUrl);
+
+            if (!itemsRes.ok) {
+                console.error(`[APIFY] Dataset HTTP ${itemsRes.status}`);
+                throw new Error(`Dataset HTTP ${itemsRes.status}`);
+            }
+
+            const items = await itemsRes.json();
+
+            if (!Array.isArray(items)) {
+                console.error('[APIFY] Items not array:', typeof items, 'keys:', Object.keys(items || {}).slice(0, 5));
+                throw new Error('Dataset response not array');
+            }
+
+            console.log('[APIFY] ✅ Got', items.length, 'items');
+            onLog(`[APIFY] ✅ Dataset: ${items.length} items`);
+
+            return items;
+        } catch (datasetError: any) {
+            console.error('[APIFY] Dataset error:', datasetError);
+            throw datasetError;
+        }
     }
 
     public async startSearch(
@@ -513,6 +638,9 @@ Genera los 2 mensajes.`
         onLog: LogCallback,
         onComplete: ResultCallback
     ) {
+        console.log('[GMAIL] 🚀 searchGmail iniciado');
+        onLog(`[GMAIL] 🚀 Iniciando búsqueda Gmail...`);
+        
         let query = `${interpreted.searchQuery} ${interpreted.location}`;
         
         // Apply advanced filters to query if available
@@ -522,6 +650,7 @@ Genera los 2 mensajes.`
         }
         
         onLog(`[GMAIL] 🗺️ Buscando: "${query}" (Smart Loop x4)...`);
+        console.log('[GMAIL] Query:', query);
 
         const targetCount = config.maxResults || 10;
         const validLeads: Lead[] = [];
@@ -788,13 +917,17 @@ Genera los 2 mensajes.`
         onLog: LogCallback,
         onComplete: ResultCallback
     ) {
+        console.log('[LINKEDIN] 🚀 searchLinkedIn iniciado');
+        onLog(`[LINKEDIN] 🚀 Iniciando búsqueda LinkedIn...`);
+        
         const targetCount = config.maxResults || 5;
         const validLeads: Lead[] = [];
         let attempts = 0;
         const MAX_ATTEMPTS = 10;
         let currentPage = 1;
 
-        onLog(`[LINKEDIN] 🕵️‍♂️ Iniciando BÚSQUEDA ACTIVA con Smart Loop...`);
+        onLog(`[LINKEDIN] 🕵️‍♂️ Target: ${targetCount} leads`);
+        console.log('[LINKEDIN] Target count:', targetCount);
 
         // ═══════════════════════════════════════════════════════════════════════════
         // SMART LOOP: Paginate through results
