@@ -49,9 +49,12 @@ CREATE TRIGGER on_profile_created
 -- FIX RLS POLICIES - Permitir inserciones
 -- ========================================
 
--- Drop old policies that might be blocking inserts
+-- Drop existing policies (idempotent - no error si no existen)
 DROP POLICY IF EXISTS "Users can insert their own search history" ON search_history;
 DROP POLICY IF EXISTS "Users can insert their own leads" ON leads;
+DROP POLICY IF EXISTS "Users can update their own search history" ON search_history;
+DROP POLICY IF EXISTS "Users can update their own leads" ON leads;
+DROP POLICY IF EXISTS "Users can update their own profile" ON profiles;
 
 -- Create new ones with correct permissions
 CREATE POLICY "Users can insert their own search history"
@@ -72,3 +75,8 @@ CREATE POLICY "Users can update their own leads"
   ON leads FOR UPDATE 
   USING (auth.uid() = user_id)
   WITH CHECK (auth.uid() = user_id);
+
+CREATE POLICY "Users can update their own profile"
+  ON profiles FOR UPDATE 
+  USING (auth.uid() = id)
+  WITH CHECK (auth.uid() = id);
