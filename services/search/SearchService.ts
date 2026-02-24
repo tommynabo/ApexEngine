@@ -30,7 +30,7 @@ export class SearchService {
         location: string;
     }> {
         if (!this.openaiKey) {
-            console.warn('[INTERPRET] OpenAI key no configurada, usando query as-is');
+            console.warn('[INTERPRET] OpenAI no configurado, usando query as-is');
             return {
                 searchQuery: userQuery,
                 industry: userQuery,
@@ -40,16 +40,16 @@ export class SearchService {
         }
 
         try {
-            console.log('[INTERPRET] 📡 Llamando OpenAI...');
+            console.log('[INTERPRET] 📡 Llamando /api/openai...');
             const controller = new AbortController();
             const timeoutId = setTimeout(() => controller.abort(), 15000); // 15 sec timeout
             
-            const response = await fetch('https://api.openai.com/v1/chat/completions', {
+            // Llamar a nuestra API route privada en lugar de OpenAI directamente
+            const response = await fetch('/api/openai', {
                 method: 'POST',
                 signal: controller.signal,
                 headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${this.openaiKey}`
+                    'Content-Type': 'application/json'
                 },
                 body: JSON.stringify({
                     model: 'gpt-4o-mini',
@@ -75,8 +75,8 @@ Responde SOLO con JSON:
             
             if (!response.ok) {
                 const err = await response.text();
-                console.error(`[INTERPRET] OpenAI HTTP ${response.status}:`, err.substring(0, 300));
-                throw new Error(`OpenAI HTTP ${response.status}`);
+                console.error(`[INTERPRET] HTTP ${response.status}:`, err.substring(0, 300));
+                throw new Error(`HTTP ${response.status}`);
             }
             
             const data = await response.json();
@@ -338,7 +338,7 @@ IMPORTANTE: Responde SOLO con JSON válido.`
         console.log('[MESSAGES] Generando 2 mensajes para:', lead.companyName);
         
         if (!this.openaiKey) {
-            console.log('[MESSAGES] ⚠️ OpenAI key no configurada, usando fallback');
+            console.log('[MESSAGES] ⚠️ OpenAI no configurado, usando fallback');
             return {
                 messageA: `Hola ${lead.decisionMaker?.name}, he visto que trabajas en ${lead.companyName}. Me gustaría hablar sobre automatización de atención al cliente.`,
                 messageB: `Hola ${lead.decisionMaker?.name}, conozco tu experiencia en ${lead.companyName}. Tenemos una oportunidad interesante con NPLs.`
@@ -346,20 +346,20 @@ IMPORTANTE: Responde SOLO con JSON válido.`
         }
 
         try {
-            console.log('[MESSAGES] 📡 Llamando OpenAI para 2 mensajes...');
+            console.log('[MESSAGES] 📡 Llamando /api/openai para 2 mensajes...');
             
             const controller = new AbortController();
             const timeoutId = setTimeout(() => {
                 controller.abort();
-                console.error('[MESSAGES] TIMEOUT en OpenAI (15s)');
+                console.error('[MESSAGES] TIMEOUT en /api/openai (15s)');
             }, 15000);
             
-            const response = await fetch('https://api.openai.com/v1/chat/completions', {
+            // Llamar a nuestra API route privada en lugar de OpenAI directamente
+            const response = await fetch('/api/openai', {
                 method: 'POST',
                 signal: controller.signal,
                 headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${this.openaiKey}`
+                    'Content-Type': 'application/json'
                 },
                 body: JSON.stringify({
                     model: 'gpt-4o-mini',
@@ -393,16 +393,16 @@ Genera los 2 mensajes.`
 
             if (!response.ok) {
                 const err = await response.text();
-                console.error('[MESSAGES] OpenAI HTTP error:', response.status, err.substring(0, 200));
-                throw new Error(`OpenAI HTTP ${response.status}`);
+                console.error('[MESSAGES] /api/openai HTTP error:', response.status, err.substring(0, 200));
+                throw new Error(`HTTP ${response.status}`);
             }
 
             const data = await response.json();
             const content = data.choices?.[0]?.message?.content || '';
             
             if (!content) {
-                console.error('[MESSAGES] Empty response from OpenAI');
-                throw new Error('OpenAI returned empty content');
+                console.error('[MESSAGES] Empty response from /api/openai');
+                throw new Error('Empty response');
             }
             
             const jsonMatch = content.match(/\{[\s\S]*\}/);
