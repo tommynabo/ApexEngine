@@ -111,18 +111,20 @@ export class DeduplicationService {
             existingLinkedinUrls.add(row.linkedin_url.toLowerCase().trim());
           }
         }
-
-        const totalCount = existingWebsites.size + existingCompanyNames.size + existingEmails.size + existingLinkedinUrls.size;
-        console.log(
-          `[DEDUP] ✅ Pre-Flight Complete: ${existingWebsites.size} dominios + ${existingCompanyNames.size} empresas descargadas`
-        );
-
-        return { existingWebsites, existingCompanyNames, existingEmails, existingLinkedinUrls, totalCount };
-      } catch (error) {
-        console.error('[DEDUP] Unexpected error in fetchExistingLeads:', error);
-        return { existingWebsites, existingCompanyNames, existingEmails, existingLinkedinUrls, totalCount: 0 };
       }
+
+      // We allow multiple "Empresa Desconocida" leads because they might be different people
+      const totalCount = existingWebsites.size + existingCompanyNames.size + existingEmails.size + existingLinkedinUrls.size;
+      console.log(
+        `[DEDUP] ✅ Pre-Flight Complete: ${existingWebsites.size} dominios + ${existingCompanyNames.size} empresas descargadas`
+      );
+
+      return { existingWebsites, existingCompanyNames, existingEmails, existingLinkedinUrls, totalCount };
+    } catch (error) {
+      console.error('[DEDUP] Unexpected error in fetchExistingLeads:', error);
+      return { existingWebsites, existingCompanyNames, existingEmails, existingLinkedinUrls, totalCount: 0 };
     }
+  }
 
   /**
    * FASE 2: Filtrado (In-Loop)
@@ -137,83 +139,83 @@ export class DeduplicationService {
    * @returns Array filtrado solo con leads únicos
    */
   filterUniqueCandidates(
-      candidates: Lead[],
-      existingWebsites: Set<string>,
-      existingCompanyNames: Set<string>,
-      existingEmails: Set<string> = new Set(),
-      existingLinkedinUrls: Set<string> = new Set()
-    ): Lead[] {
-      const uniqueCandidates: Lead[] = [];
-      const duplicateLog: string[] = [];
+    candidates: Lead[],
+    existingWebsites: Set<string>,
+    existingCompanyNames: Set<string>,
+    existingEmails: Set<string> = new Set(),
+    existingLinkedinUrls: Set<string> = new Set()
+  ): Lead[] {
+    const uniqueCandidates: Lead[] = [];
+    const duplicateLog: string[] = [];
 
-      for (const candidate of candidates) {
-        let isDuplicate = false;
-        let duplicateReason = '';
+    for (const candidate of candidates) {
+      let isDuplicate = false;
+      let duplicateReason = '';
 
-        // Check website
-        if (candidate.website) {
-          const normalizedUrl = this.normalizeUrl(candidate.website);
-          if (existingWebsites.has(normalizedUrl)) {
-            isDuplicate = true;
-            duplicateReason = `website: ${candidate.website}`;
-          }
-        }
-
-        // Check linkedin url
-        if (!isDuplicate && candidate.decisionMaker?.linkedin) {
-          const urlToMatch = candidate.decisionMaker.linkedin.toLowerCase().trim();
-          if (existingLinkedinUrls.has(urlToMatch)) {
-            isDuplicate = true;
-            duplicateReason = `linkedin: ${urlToMatch}`;
-          }
-        }
-
-        // Check email
-        if (!isDuplicate && candidate.decisionMaker?.email) {
-          const emailToMatch = candidate.decisionMaker.email.toLowerCase().trim();
-          if (existingEmails.has(emailToMatch)) {
-            isDuplicate = true;
-            duplicateReason = `email: ${emailToMatch}`;
-          }
-        }
-
-        // Check company name (only if not already marked as duplicate)
-        if (!isDuplicate && candidate.companyName) {
-          const normalizedName = this.normalizeName(candidate.companyName);
-
-          // Skip check if the candidate itself has a generic name
-          // We allow multiple "Empresa Desconocida" leads because they might be different people
-          const isGeneric =
-            candidate.companyName === 'Sin Nombre' ||
-            candidate.companyName === 'Empresa Desconocida' ||
-            normalizedName.includes('sin nombre') ||
-            normalizedName.includes('empresa desconocida');
-
-          if (!isGeneric && existingCompanyNames.has(normalizedName)) {
-            isDuplicate = true;
-            duplicateReason = `company: ${candidate.companyName}`;
-          }
-        }
-
-        if (isDuplicate) {
-          duplicateLog.push(`❌ DESCARTADO: ${candidate.companyName || 'Unknown'} (${duplicateReason})`);
-        } else {
-          uniqueCandidates.push(candidate);
+      // Check website
+      if (candidate.website) {
+        const normalizedUrl = this.normalizeUrl(candidate.website);
+        if (existingWebsites.has(normalizedUrl)) {
+          isDuplicate = true;
+          duplicateReason = `website: ${candidate.website}`;
         }
       }
 
-      // Log results
-      if (duplicateLog.length > 0) {
-        console.log(`[DEDUP] 🎯 Fase de Filtrado: ${duplicateLog.length} duplicados descartados`);
-        duplicateLog.forEach(log => console.log(`[DEDUP] ${log}`));
+      // Check linkedin url
+      if (!isDuplicate && candidate.decisionMaker?.linkedin) {
+        const urlToMatch = candidate.decisionMaker.linkedin.toLowerCase().trim();
+        if (existingLinkedinUrls.has(urlToMatch)) {
+          isDuplicate = true;
+          duplicateReason = `linkedin: ${urlToMatch}`;
+        }
       }
 
-      console.log(
-        `[DEDUP] ✅ Resultado: ${uniqueCandidates.length}/${candidates.length} leads únicos (${candidates.length - uniqueCandidates.length} rechazados)`
-      );
+      // Check email
+      if (!isDuplicate && candidate.decisionMaker?.email) {
+        const emailToMatch = candidate.decisionMaker.email.toLowerCase().trim();
+        if (existingEmails.has(emailToMatch)) {
+          isDuplicate = true;
+          duplicateReason = `email: ${emailToMatch}`;
+        }
+      }
 
-      return uniqueCandidates;
+      // Check company name (only if not already marked as duplicate)
+      if (!isDuplicate && candidate.companyName) {
+        const normalizedName = this.normalizeName(candidate.companyName);
+
+        // Skip check if the candidate itself has a generic name
+        // We allow multiple "Empresa Desconocida" leads because they might be different people
+        const isGeneric =
+          candidate.companyName === 'Sin Nombre' ||
+          candidate.companyName === 'Empresa Desconocida' ||
+          normalizedName.includes('sin nombre') ||
+          normalizedName.includes('empresa desconocida');
+
+        if (!isGeneric && existingCompanyNames.has(normalizedName)) {
+          isDuplicate = true;
+          duplicateReason = `company: ${candidate.companyName}`;
+        }
+      }
+
+      if (isDuplicate) {
+        duplicateLog.push(`❌ DESCARTADO: ${candidate.companyName || 'Unknown'} (${duplicateReason})`);
+      } else {
+        uniqueCandidates.push(candidate);
+      }
     }
+
+    // Log results
+    if (duplicateLog.length > 0) {
+      console.log(`[DEDUP] 🎯 Fase de Filtrado: ${duplicateLog.length} duplicados descartados`);
+      duplicateLog.forEach(log => console.log(`[DEDUP] ${log}`));
+    }
+
+    console.log(
+      `[DEDUP] ✅ Resultado: ${uniqueCandidates.length}/${candidates.length} leads únicos (${candidates.length - uniqueCandidates.length} rechazados)`
+    );
+
+    return uniqueCandidates;
+  }
 
   /**
    * PHASE 3: Logging
@@ -225,11 +227,11 @@ export class DeduplicationService {
    * @returns boolean indicating success
    */
   async logDuplications(
-      duplicates: Array<{ name: string; reason: string }>,
-      userId: string | null,
-      sessionId: string
-    ): Promise < boolean > {
-      if(!userId || duplicates.length === 0) {
+    duplicates: Array<{ name: string; reason: string }>,
+    userId: string | null,
+    sessionId: string
+  ): Promise<boolean> {
+    if (!userId || duplicates.length === 0) {
       return true; // Skip if no duplicates
     }
 
