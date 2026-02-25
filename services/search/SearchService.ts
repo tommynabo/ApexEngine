@@ -568,7 +568,14 @@ Genera el mensaje.`
 
             if (config.source === 'linkedin') {
                 onLog(`[LINKEDIN] 🚀 Iniciando búsqueda LinkedIn...`);
-                await this.searchLinkedIn(config, interpreted, onLog, onComplete);
+                await this.searchLinkedIn(
+                    config, 
+                    interpreted, 
+                    existingWebsites,
+                    existingCompanyNames,
+                    onLog, 
+                    onComplete
+                );
             } else {
                 onLog(`[GMAIL] 🚀 Iniciando búsqueda Gmail/Maps...`);
                 await this.searchGmail(
@@ -877,6 +884,8 @@ Genera el mensaje.`
     private async searchLinkedIn(
         config: SearchConfigState,
         interpreted: { searchQuery: string; industry: string; targetRoles: string[]; location: string },
+        existingWebsites: Set<string>,
+        existingCompanyNames: Set<string>,
         onLog: LogCallback,
         onComplete: ResultCallback
     ) {
@@ -932,8 +941,9 @@ Genera el mensaje.`
                     break;
                 }
 
-                // Process profiles
+                // Process profiles - Accumulate candidates first
                 const POSTS_SCRAPER = 'LQQIXN9Othf8f7R5n';
+                const attemptCandidates: Lead[] = [];
 
                 for (let i = 0; i < linkedInProfiles.length && this.isRunning; i++) {
                     if (validLeads.length >= targetCount) break;
@@ -945,12 +955,6 @@ Genera el mensaje.`
                     const name = titleParts[0]?.replace(' | LinkedIn', '').trim() || 'Usuario LinkedIn';
                     const role = this.extractRole(profile.title) || 'Decisor';
                     const company = this.extractCompany(profile.title) || 'Empresa Desconocida';
-
-                    // Check duplicates
-                    if (validLeads.some(l => l.companyName === company)) {
-                        onLog(`[LINKEDIN] 🔄 Duplicado: ${company}`);
-                        continue;
-                    }
 
                     let recentPostsText = "";
                     try {
@@ -980,8 +984,8 @@ Genera el mensaje.`
                             decisionMaker: { name, role, linkedin: profile.url }
                         } as Lead);
 
-                        validLeads.push({
-                            id: `linkedin-${Date.now()}-${validLeads.length}`,
+                        attemptCandidates.push({
+                            id: `linkedin-${Date.now()}-${attemptCandidates.length}`,
                             source: 'linkedin',
                             companyName: company,
                             website: '',
@@ -1007,11 +1011,39 @@ Genera el mensaje.`
                             isNPLPotential: false,
                             status: 'ready'
                         });
-
-                        onLog(`[SUCCESS] ✅ Lead ${validLeads.length}/${targetCount}: ${name}`);
                     } catch (e) {
                         onLog(`[RESEARCH] ⚠️ Análisis fallido para ${name}`);
                     }
+                }
+
+                // ═══════════════════════════════════════════════════════════════════════════
+                // DEDUPLICATION: Filter against current session & global history
+                // ═══════════════════════════════════════════════════════════════════════════
+                const sessionUnique = attemptCandidates.filter(candidate => 
+                    !validLeads.some(dl => dl.companyName === candidate.companyName)
+                );
+
+                if (sessionUnique.length > 0) {
+                    onLog(`[DEDUP] 🎯 Filtrando ${sessionUnique.length} candidatos contra historial global...`);
+                    const globalUnique = deduplicationService.filterUniqueCandidates(
+                        sessionUnique,
+                        existingWebsites,
+                        existingCompanyNames
+                    );
+
+                    if (globalUnique.length < sessionUnique.length) {
+                        onLog(
+                            `[DEDUP] ⚠️ ${sessionUnique.length - globalUnique.length} duplicados descartados (ya en historial). ` +
+                            `Quedaron ${globalUnique.length} nuevos.`
+                        );
+                    }
+
+                    for (const lead of globalUnique) {
+                        validLeads.push(lead);
+                        onLog(`[SUCCESS] ✅ Lead ${validLeads.length}/${targetCount}: ${lead.companyName}`);
+                    }
+                } else {
+                    onLog(`[LINKEDIN-ATTEMPT ${attempts}] ℹ️ Todos fueron duplicados de esta sesión.`);
                 }
 
                 currentPage++;
