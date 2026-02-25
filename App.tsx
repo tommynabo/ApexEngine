@@ -274,22 +274,65 @@ function App() {
         // Save to Supabase (Cloud)
         if (userId) {
           try {
-            const { error } = await supabase.from('search_history').insert({
-              user_id: userId,
-              search_query: config.query,
-              source: config.source,
-              mode: config.mode,
-              total_results: results.length,
-              results_extracted: results.length,
-              status: 'completed',
-              executed_at: new Date().toISOString(),
-              completed_at: new Date().toISOString()
-            });
-            if (error) {
-              console.error('DB Error:', error);
-              addLog(`[DB] ⚠️ Error al guardar: ${error.message}`);
+            // 1. Insert search record and get ID
+            const { data, error: searchError } = await supabase
+              .from('search_history')
+              .insert({
+                user_id: userId,
+                search_query: config.query,
+                source: config.source,
+                mode: config.mode,
+                total_results: results.length,
+                results_extracted: results.length,
+                status: 'completed',
+                executed_at: new Date().toISOString(),
+                completed_at: new Date().toISOString()
+              })
+              .select();
+
+            if (searchError) {
+              console.error('DB Error saving search_history:', searchError);
+              addLog(`[DB] ⚠️ Error al guardar búsqueda: ${searchError.message}`);
+              return;
             }
-            else addLog('[DB] ✅ Resultados guardados en la nube.');
+
+            if (!data || data.length === 0) {
+              addLog(`[DB] ⚠️ No se obtuvo ID de búsqueda.`);
+              return;
+            }
+
+            const searchId = data[0].id;
+            addLog(`[DB] ✅ Búsqueda registrada (ID: ${searchId})`);
+
+            // 2. Save each lead to the leads table with search_id reference
+            const leadsToInsert = results.map(lead => ({
+              user_id: userId,
+              search_id: searchId,
+              name: lead.decisionMaker?.name || lead.companyName || '',
+              company_name: lead.companyName || '',
+              job_title: lead.decisionMaker?.role || '',
+              linkedin_url: lead.decisionMaker?.linkedin || '',
+              email: lead.decisionMaker?.email || '',
+              phone: lead.decisionMaker?.phone || '',
+              company_website: lead.website || '',
+              location: lead.location || '',
+              ai_summary: lead.aiAnalysis?.summary || '',
+              ai_pain_points: lead.aiAnalysis?.painPoints || [],
+              ai_business_moment: lead.aiAnalysis?.businessMoment || '',
+              ai_is_npl_potential: lead.isNPLPotential || false,
+              status: 'scraped'
+            }));
+
+            const { error: leadsError } = await supabase
+              .from('leads')
+              .insert(leadsToInsert);
+
+            if (leadsError) {
+              console.error('DB Error saving leads:', leadsError);
+              addLog(`[DB] ⚠️ Error al guardar ${results.length} contactos: ${leadsError.message}`);
+            } else {
+              addLog(`[DB] ✅ ${results.length} contactos guardados correctamente.`);
+            }
           } catch (err) {
             console.error('Failed to save results to DB', err);
             addLog(`[ERROR] Excepción al guardar: ${err}`);
@@ -316,35 +359,7 @@ function App() {
     }
   };
 
-  // --- Lead Actions (for Marcos' workflow) ---
-  const handleMarkContacted = (leadId: string, messageType: 'a' | 'b') => {
-    setLeads(prevLeads =>
-      prevLeads.map(lead =>
-        lead.id === leadId
-          ? { ...lead, status: 'contacted' }
-          : lead
-      )
-    );
-    
-    // Log to Supabase if needed
-    if (userId) {
-      addLog(`[CONTACTO] Lead ${leadId} marcado como contactado (Mensaje ${messageType.toUpperCase()}).`);
-    }
-  };
-
-  const handleMarkDiscarded = (leadId: string) => {
-    setLeads(prevLeads =>
-      prevLeads.map(lead =>
-        lead.id === leadId
-          ? { ...lead, status: 'discarded' }
-          : lead
-      )
-    );
-    
-    if (userId) {
-      addLog(`[DESCARTADO] Lead ${leadId} descartado.`);
-    }
-  };
+  // --- Lead Actions (removed - no longer needed) ---
 
   // --- Autopilot Logic ---
 
@@ -376,24 +391,68 @@ function App() {
 
         if (userId) {
           try {
-            const { error } = await supabase.from('search_history').insert({
-              user_id: userId,
-              search_query: autopilotConfig.query,
-              source: autopilotConfig.source,
-              mode: autopilotConfig.mode,
-              total_results: results.length,
-              results_extracted: results.length,
-              status: 'completed',
-              executed_at: new Date().toISOString(),
-              completed_at: new Date().toISOString()
-            });
-            if (error) {
-              console.error('DB Error:', error);
-              addLog(`[AUTOPILOT] ⚠️ Error guardando: ${error.message}`);
+            // 1. Insert search record and get ID
+            const { data, error: searchError } = await supabase
+              .from('search_history')
+              .insert({
+                user_id: userId,
+                search_query: autopilotConfig.query,
+                source: autopilotConfig.source,
+                mode: autopilotConfig.mode,
+                total_results: results.length,
+                results_extracted: results.length,
+                status: 'completed',
+                executed_at: new Date().toISOString(),
+                completed_at: new Date().toISOString()
+              })
+              .select();
+
+            if (searchError) {
+              console.error('DB Error saving search_history:', searchError);
+              addLog(`[AUTOPILOT] ⚠️ Error al guardar búsqueda: ${searchError.message}`);
+              return;
             }
-            else addLog('[AUTOPILOT] ✅ Resultados guardados.');
+
+            if (!data || data.length === 0) {
+              addLog(`[AUTOPILOT] ⚠️ No se obtuvo ID de búsqueda.`);
+              return;
+            }
+
+            const searchId = data[0].id;
+            addLog(`[AUTOPILOT] ✅ Búsqueda registrada (ID: ${searchId})`);
+
+            // 2. Save each lead to the leads table with search_id reference
+            const leadsToInsert = results.map(lead => ({
+              user_id: userId,
+              search_id: searchId,
+              name: lead.decisionMaker?.name || lead.companyName || '',
+              company_name: lead.companyName || '',
+              job_title: lead.decisionMaker?.role || '',
+              linkedin_url: lead.decisionMaker?.linkedin || '',
+              email: lead.decisionMaker?.email || '',
+              phone: lead.decisionMaker?.phone || '',
+              company_website: lead.website || '',
+              location: lead.location || '',
+              ai_summary: lead.aiAnalysis?.summary || '',
+              ai_pain_points: lead.aiAnalysis?.painPoints || [],
+              ai_business_moment: lead.aiAnalysis?.businessMoment || '',
+              ai_is_npl_potential: lead.isNPLPotential || false,
+              status: 'scraped'
+            }));
+
+            const { error: leadsError } = await supabase
+              .from('leads')
+              .insert(leadsToInsert);
+
+            if (leadsError) {
+              console.error('DB Error saving leads:', leadsError);
+              addLog(`[AUTOPILOT] ⚠️ Error al guardar ${results.length} contactos: ${leadsError.message}`);
+            } else {
+              addLog(`[AUTOPILOT] ✅ ${results.length} contactos guardados correctamente.`);
+            }
           } catch (err) {
             console.error('Failed to save autopilot results to DB', err);
+            addLog(`[AUTOPILOT] ❌ Excepción al guardar: ${err}`);
           }
         }
 
@@ -506,8 +565,6 @@ function App() {
             <LeadsTable
               leads={leads}
               onViewMessage={setSelectedLead}
-              onMarkContacted={handleMarkContacted}
-              onMarkDiscarded={handleMarkDiscarded}
             />
           </div>
         )}

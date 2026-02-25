@@ -1,12 +1,10 @@
 import React from 'react';
 import { Lead } from '../lib/types';
-import { User, Mail, MessageSquare, ExternalLink, CheckCircle2, Clock, Database, Sparkles, Linkedin, Check, X } from 'lucide-react';
+import { User, Mail, ExternalLink, Sparkles, Linkedin, MessageSquare } from 'lucide-react';
 
 interface LeadsTableProps {
   leads: Lead[];
   onViewMessage: (lead: Lead) => void;
-  onMarkContacted?: (leadId: string, messageType: 'a' | 'b') => void;
-  onMarkDiscarded?: (leadId: string) => void;
 }
 
 const exportToCSV = (leads: Lead[]) => {
@@ -72,20 +70,16 @@ export function LeadsTable({ leads, onViewMessage, onMarkContacted, onMarkDiscar
         <table className="w-full text-left border-collapse">
           <thead>
             <tr className="bg-secondary/30 text-xs text-muted-foreground uppercase tracking-wider border-b border-border">
-              <th className="px-6 py-4 font-medium w-[100px]">Estado</th>
               <th className="px-6 py-4 font-medium w-[15%]">Empresa</th>
               <th className="px-6 py-4 font-medium w-[15%]">Decisor</th>
               <th className="px-6 py-4 font-medium w-[15%]">Contacto</th>
-              <th className="px-6 py-4 font-medium w-[30%]">Análisis IA</th>
-              <th className="px-6 py-4 font-medium text-right w-[25%]">Acciones</th>
+              <th className="px-6 py-4 font-medium w-[35%]">Análisis IA</th>
+              <th className="px-6 py-4 font-medium text-right w-[20%]">Acción</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-border">
             {leads.map((lead) => (
               <tr key={lead.id} className="group hover:bg-secondary/20 transition-colors">
-                <td className="px-6 py-4 align-top">
-                  <StatusBadge status={lead.status} />
-                </td>
                 <td className="px-6 py-4 align-top">
                   <div className="flex flex-col max-w-[150px]">
                     <span className="font-medium text-foreground truncate" title={lead.companyName}>{lead.companyName}</span>
@@ -140,50 +134,25 @@ export function LeadsTable({ leads, onViewMessage, onMarkContacted, onMarkDiscar
                 </td>
                 <td className="px-6 py-4 align-top">
                   <div className="bg-secondary/40 p-3 rounded-lg border border-border/50 shadow-sm relative overflow-hidden">
-                    {/* Subtle gradient accent */}
                     <div className="absolute top-0 left-0 w-1 h-full bg-primary/20" />
-
                     <div className="flex items-start gap-2 mb-2">
                       <Sparkles className="w-3.5 h-3.5 text-primary mt-0.5 flex-shrink-0" />
                       <span className="text-xs font-bold text-foreground uppercase tracking-wide">Insight</span>
                     </div>
-                    <p className="text-xs text-muted-foreground leading-relaxed line-clamp-3">
+                    <p className="text-xs text-muted-foreground leading-relaxed line-clamp-2">
                       {lead.aiAnalysis.summary}
                     </p>
                   </div>
                 </td>
                 <td className="px-6 py-4 align-top text-right">
-                  <div className="flex gap-2 justify-end">
-                    <button
-                      onClick={() => onViewMessage(lead)}
-                      className="inline-flex items-center gap-1 px-3 py-1.5 bg-primary/10 text-primary hover:bg-primary hover:text-primary-foreground border border-primary/20 rounded-md text-xs font-bold transition-all"
-                      title="Ver y editar mensaje"
-                    >
-                      <MessageSquare className="w-3 h-3" />
-                      <span className="hidden sm:inline">Draft</span>
-                    </button>
-                    {onMarkContacted && (
-                      <button
-                        onClick={() => onMarkContacted(lead.id, 'a')}
-                        disabled={lead.status === 'contacted' || lead.status === 'discarded'}
-                        className="inline-flex items-center gap-1 px-3 py-1.5 bg-green-600/10 text-green-600 hover:bg-green-600 hover:text-white border border-green-500/20 rounded-md text-xs font-bold transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-                        title="Marcar como contactado"
-                      >
-                        <Check className="w-3 h-3" />
-                        <span className="hidden sm:inline">OK</span>
-                      </button>
-                    )}
-                    {onMarkDiscarded && (
-                      <button
-                        onClick={() => onMarkDiscarded(lead.id)}
-                        disabled={lead.status === 'discarded'}
-                        className="inline-flex items-center gap-1 px-3 py-1.5 bg-red-600/10 text-red-600 hover:bg-red-600 hover:text-white border border-red-500/20 rounded-md text-xs font-bold transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-                        title="Descartar"
-                      >
-                        <X className="w-3 h-3" />
-                      </button>
-                    )}
-                  </div>
+                  <button
+                    onClick={() => onViewMessage(lead)}
+                    className="inline-flex items-center gap-1 px-3 py-1.5 bg-primary/10 text-primary hover:bg-primary hover:text-primary-foreground border border-primary/20 rounded-md text-xs font-bold transition-all"
+                    title="Ver y editar mensaje"
+                  >
+                    <MessageSquare className="w-3 h-3" />
+                    <span className="hidden sm:inline">Draft</span>
+                  </button>
                 </td>
               </tr>
             ))}
@@ -191,38 +160,5 @@ export function LeadsTable({ leads, onViewMessage, onMarkContacted, onMarkDiscar
         </table>
       </div>
     </div>
-  );
-}
-
-function StatusBadge({ status }: { status: Lead['status'] }) {
-  const styles = {
-    scraped: 'bg-zinc-800 text-zinc-400 border-zinc-700',
-    enriched: 'bg-blue-500/10 text-blue-400 border-blue-500/20',
-    ready: 'bg-green-500/10 text-green-400 border-green-500/20',
-    contacted: 'bg-orange-500/10 text-orange-400 border-orange-500/20',
-    replied: 'bg-purple-500/10 text-purple-400 border-purple-500/20',
-  };
-
-  const statusMap: Record<string, string> = {
-    scraped: 'Extraído',
-    enriched: 'Enriquecido',
-    ready: 'Listo',
-    contacted: 'Contactado',
-    replied: 'Respuesta'
-  };
-
-  const icons = {
-    scraped: <Clock className="w-3 h-3" />,
-    enriched: <Database className="w-3 h-3" />,
-    ready: <CheckCircle2 className="w-3 h-3" />,
-    contacted: <Mail className="w-3 h-3" />,
-    replied: <MessageSquare className="w-3 h-3" />,
-  };
-
-  return (
-    <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium border ${styles[status]}`}>
-      {icons[status]}
-      <span className="capitalize">{statusMap[status] || status}</span>
-    </span>
   );
 }
