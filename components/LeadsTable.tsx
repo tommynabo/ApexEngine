@@ -1,10 +1,12 @@
 import React from 'react';
 import { Lead } from '../lib/types';
-import { User, Mail, MessageSquare, ExternalLink, CheckCircle2, Clock, Database, Sparkles, Linkedin } from 'lucide-react';
+import { User, Mail, MessageSquare, ExternalLink, CheckCircle2, Clock, Database, Sparkles, Linkedin, Check, X } from 'lucide-react';
 
 interface LeadsTableProps {
   leads: Lead[];
   onViewMessage: (lead: Lead) => void;
+  onMarkContacted?: (leadId: string, messageType: 'a' | 'b') => void;
+  onMarkDiscarded?: (leadId: string) => void;
 }
 
 const exportToCSV = (leads: Lead[]) => {
@@ -46,7 +48,7 @@ const exportToCSV = (leads: Lead[]) => {
   URL.revokeObjectURL(url);
 };
 
-export function LeadsTable({ leads, onViewMessage }: LeadsTableProps) {
+export function LeadsTable({ leads, onViewMessage, onMarkContacted, onMarkDiscarded }: LeadsTableProps) {
   if (leads.length === 0) return null;
 
   return (
@@ -74,8 +76,8 @@ export function LeadsTable({ leads, onViewMessage }: LeadsTableProps) {
               <th className="px-6 py-4 font-medium w-[15%]">Empresa</th>
               <th className="px-6 py-4 font-medium w-[15%]">Decisor</th>
               <th className="px-6 py-4 font-medium w-[15%]">Contacto</th>
-              <th className="px-6 py-4 font-medium w-[40%]">Análisis IA</th>
-              <th className="px-6 py-4 font-medium text-right">Acción</th>
+              <th className="px-6 py-4 font-medium w-[30%]">Análisis IA</th>
+              <th className="px-6 py-4 font-medium text-right w-[25%]">Acciones</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-border">
@@ -137,27 +139,51 @@ export function LeadsTable({ leads, onViewMessage }: LeadsTableProps) {
                   </div>
                 </td>
                 <td className="px-6 py-4 align-top">
-                  <div className="bg-secondary/40 p-4 rounded-lg border border-border/50 shadow-sm relative overflow-hidden">
+                  <div className="bg-secondary/40 p-3 rounded-lg border border-border/50 shadow-sm relative overflow-hidden">
                     {/* Subtle gradient accent */}
                     <div className="absolute top-0 left-0 w-1 h-full bg-primary/20" />
 
                     <div className="flex items-start gap-2 mb-2">
                       <Sparkles className="w-3.5 h-3.5 text-primary mt-0.5 flex-shrink-0" />
-                      <span className="text-xs font-bold text-foreground uppercase tracking-wide">Insight Clave</span>
+                      <span className="text-xs font-bold text-foreground uppercase tracking-wide">Insight</span>
                     </div>
-                    <p className="text-sm text-muted-foreground leading-relaxed">
+                    <p className="text-xs text-muted-foreground leading-relaxed line-clamp-3">
                       {lead.aiAnalysis.summary}
                     </p>
                   </div>
                 </td>
                 <td className="px-6 py-4 align-top text-right">
-                  <button
-                    onClick={() => onViewMessage(lead)}
-                    className="inline-flex items-center gap-2 px-4 py-2 bg-primary/10 text-primary hover:bg-primary hover:text-primary-foreground border border-primary/20 rounded-md text-xs font-bold transition-all"
-                  >
-                    <MessageSquare className="w-3 h-3" />
-                    Draft
-                  </button>
+                  <div className="flex gap-2 justify-end">
+                    <button
+                      onClick={() => onViewMessage(lead)}
+                      className="inline-flex items-center gap-1 px-3 py-1.5 bg-primary/10 text-primary hover:bg-primary hover:text-primary-foreground border border-primary/20 rounded-md text-xs font-bold transition-all"
+                      title="Ver y editar mensaje"
+                    >
+                      <MessageSquare className="w-3 h-3" />
+                      <span className="hidden sm:inline">Draft</span>
+                    </button>
+                    {onMarkContacted && (
+                      <button
+                        onClick={() => onMarkContacted(lead.id, 'a')}
+                        disabled={lead.status === 'contacted' || lead.status === 'discarded'}
+                        className="inline-flex items-center gap-1 px-3 py-1.5 bg-green-600/10 text-green-600 hover:bg-green-600 hover:text-white border border-green-500/20 rounded-md text-xs font-bold transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                        title="Marcar como contactado"
+                      >
+                        <Check className="w-3 h-3" />
+                        <span className="hidden sm:inline">OK</span>
+                      </button>
+                    )}
+                    {onMarkDiscarded && (
+                      <button
+                        onClick={() => onMarkDiscarded(lead.id)}
+                        disabled={lead.status === 'discarded'}
+                        className="inline-flex items-center gap-1 px-3 py-1.5 bg-red-600/10 text-red-600 hover:bg-red-600 hover:text-white border border-red-500/20 rounded-md text-xs font-bold transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                        title="Descartar"
+                      >
+                        <X className="w-3 h-3" />
+                      </button>
+                    )}
+                  </div>
                 </td>
               </tr>
             ))}

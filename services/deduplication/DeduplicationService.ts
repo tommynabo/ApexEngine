@@ -182,6 +182,48 @@ export class DeduplicationService {
   }
 
   /**
+   * PHASE 3: Logging
+   * Registers duplicate findings in the deduplication_log table
+   * 
+   * @param duplicates - Array of duplicate records found
+   * @param userId - User ID for the log entry
+   * @param sessionId - Search session ID
+   * @returns boolean indicating success
+   */
+  async logDuplications(
+    duplicates: Array<{ name: string; reason: string }>,
+    userId: string | null,
+    sessionId: string
+  ): Promise<boolean> {
+    if (!userId || duplicates.length === 0) {
+      return true; // Skip if no duplicates
+    }
+
+    try {
+      const logEntries = duplicates.map(dup => ({
+        user_id: userId,
+        search_id: sessionId,
+        duplicate_name: dup.name,
+        duplicate_reason: dup.reason,
+        detected_at: new Date().toISOString()
+      }));
+
+      const { error } = await supabase.from('deduplication_log').insert(logEntries);
+
+      if (error) {
+        console.warn('[DEDUP] Warning logging duplicates:', error.message);
+        return false;
+      }
+
+      console.log(`[DEDUP] 📝 Registered ${duplicates.length} duplicates in log`);
+      return true;
+    } catch (error) {
+      console.warn('[DEDUP] Unexpected error logging duplicates:', error);
+      return false;
+    }
+  }
+
+  /**
    * FASE 3: Guardado
    * Solo guarda en la base de datos los leads que pasaron el filtro de deduplicación
    * Este método es llamado desde App.tsx después de obtener los resultados

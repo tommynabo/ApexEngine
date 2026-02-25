@@ -4,7 +4,6 @@ import { SearchConfig } from './components/SearchConfig';
 import { SearchCriteriaModal } from './components/SearchCriteriaModal';
 import { AgentTerminal } from './components/AgentTerminal';
 import { LeadsTable } from './components/LeadsTable';
-import { LeadsCards } from './components/LeadsCards';
 import { MessageModal } from './components/MessageModal';
 import { LoginPage } from './components/LoginPage';
 import { CampaignsView } from './components/CampaignsView';
@@ -135,29 +134,77 @@ function App() {
 
   const loadHistory = async (uid: string) => {
     try {
-      const { data, error } = await supabase
+      // Load search history first
+      const { data: searchData, error: searchError } = await supabase
         .from('search_history')
         .select('*')
         .eq('user_id', uid)
         .order('executed_at', { ascending: false });
 
-      if (error) {
-        console.error('DB Error loading history:', error);
-        addLog(`[DB] ⚠️ Error cargando historial: ${error.message}`);
+      if (searchError) {
+        console.error('DB Error loading history:', searchError);
+        addLog(`[DB] ⚠️ Error cargando historial: ${searchError.message}`);
         return;
       }
 
-      if (data && data.length > 0) {
-        const sessions: SearchSession[] = data.map(row => ({
-          id: row.id,
-          date: new Date(row.executed_at),
-          query: row.search_query || '',
-          source: row.source as any || 'linkedin',
-          resultsCount: row.results_extracted || 0,
-          leads: []
-        }));
+      if (searchData && searchData.length > 0) {
+        // For each search session, load associated leads
+        const sessions: SearchSession[] = await Promise.all(
+          searchData.map(async (row) => {
+            // Load leads for this search session
+            const { data: leadsData, error: leadsError } = await supabase
+              .from('leads')
+              .select('*')
+              .eq('search_id', row.id);
+
+            let leads: Lead[] = [];
+            if (leadsError) {
+              console.warn(`[HISTORY] Error loading leads for session ${row.id}:`, leadsError);
+            } else if (leadsData && leadsData.length > 0) {
+              // Transform DB leads to Lead interface
+              leads = leadsData.map(l => ({
+                id: l.id,
+                source: row.source as any || 'linkedin',
+                companyName: l.company_name || 'Sin Nombre',
+                website: l.company_website,
+                location: l.location,
+                decisionMaker: {
+                  name: l.name,
+                  role: l.job_title || '',
+                  email: l.email || '',
+                  phone: l.phone,
+                  linkedin: l.linkedin_url,
+                  facebook: l.facebook_url,
+                  instagram: l.instagram_url
+                },
+                aiAnalysis: {
+                  summary: l.ai_summary || '',
+                  painPoints: l.ai_pain_points || [],
+                  generatedIcebreaker: '',
+                  fullMessage: '',
+                  fullAnalysis: l.ai_summary || '',
+                  psychologicalProfile: '',
+                  businessMoment: l.ai_business_moment || '',
+                  salesAngle: ''
+                },
+                isNPLPotential: l.ai_is_npl_potential || false,
+                status: l.status as any || 'scraped'
+              }));
+            }
+
+            return {
+              id: row.id,
+              date: new Date(row.executed_at),
+              query: row.search_query || '',
+              source: row.source as any || 'linkedin',
+              resultsCount: leads.length || row.results_extracted || 0,
+              leads: leads
+            };
+          })
+        );
+
         setHistory(sessions);
-        console.log(`[HISTORY] Cargadas ${sessions.length} búsquedas del cloud`);
+        console.log(`[HISTORY] Cargadas ${sessions.length} búsquedas con ${sessions.reduce((sum, s) => sum + s.leads.length, 0)} leads del cloud`);
       }
     } catch (e) {
       console.error('Error loading history', e);
@@ -456,8 +503,9 @@ function App() {
               onToggleExpand={() => setTerminalExpanded(!terminalExpanded)}
             />
 
-            <LeadsCards
+            <LeadsTable
               leads={leads}
+              onViewMessage={setSelectedLead}
               onMarkContacted={handleMarkContacted}
               onMarkDiscarded={handleMarkDiscarded}
             />
