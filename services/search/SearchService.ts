@@ -32,7 +32,7 @@ export class SearchService {
             console.log('[INTERPRET] 📡 Llamando /api/openai...');
             const controller = new AbortController();
             const timeoutId = setTimeout(() => controller.abort(), 15000); // 15 sec timeout
-            
+
             // Llamar a nuestra API route privada en lugar de OpenAI directamente
             const response = await fetch('/api/openai', {
                 method: 'POST',
@@ -61,13 +61,13 @@ Responde SOLO con JSON:
                 })
             });
             clearTimeout(timeoutId);
-            
+
             if (!response.ok) {
                 const err = await response.text();
                 console.error(`[INTERPRET] HTTP ${response.status}:`, err.substring(0, 300));
                 throw new Error(`HTTP ${response.status}`);
             }
-            
+
             const data = await response.json();
             const match = data.choices?.[0]?.message?.content?.match(/\{[\s\S]*\}/);
             if (match) {
@@ -316,13 +316,13 @@ IMPORTANTE: Responde SOLO con JSON válido.`
 
         try {
             console.log('[MESSAGE] 📡 Llamando /api/openai...');
-            
+
             const controller = new AbortController();
             const timeoutId = setTimeout(() => {
                 controller.abort();
                 console.error('[MESSAGE] TIMEOUT (15s)');
             }, 15000);
-            
+
             const response = await fetch('/api/openai', {
                 method: 'POST',
                 signal: controller.signal,
@@ -367,12 +367,12 @@ Genera el mensaje.`
 
             const data = await response.json();
             const content = data.choices?.[0]?.message?.content || '';
-            
+
             if (!content) {
                 console.error('[MESSAGE] Empty response');
                 throw new Error('Empty response');
             }
-            
+
             const jsonMatch = content.match(/\{[\s\S]*\}/);
 
             if (jsonMatch) {
@@ -558,7 +558,7 @@ Genera el mensaje.`
             // FASE 1: Pre-Flight - Descargar leads existentes del usuario
             // ═══════════════════════════════════════════════════════════════════════════
             onLog(`[DEDUP] 🔍 Iniciando verificación anti-duplicados...`);
-            const { existingWebsites, existingCompanyNames } =
+            const { existingWebsites, existingCompanyNames, existingEmails, existingLinkedinUrls } =
                 await deduplicationService.fetchExistingLeads(this.userId);
             onLog(`[DEDUP] ✅ Pre-flight: ${existingWebsites.size} dominios, ${existingCompanyNames.size} empresas en historial`);
 
@@ -569,21 +569,25 @@ Genera el mensaje.`
             if (config.source === 'linkedin') {
                 onLog(`[LINKEDIN] 🚀 Iniciando búsqueda LinkedIn...`);
                 await this.searchLinkedIn(
-                    config, 
-                    interpreted, 
+                    config,
+                    interpreted,
                     existingWebsites,
                     existingCompanyNames,
-                    onLog, 
+                    existingEmails,
+                    existingLinkedinUrls,
+                    onLog,
                     onComplete
                 );
             } else {
                 onLog(`[GMAIL] 🚀 Iniciando búsqueda Gmail/Maps...`);
                 await this.searchGmail(
-                    config, 
-                    interpreted, 
+                    config,
+                    interpreted,
                     existingWebsites,
                     existingCompanyNames,
-                    onLog, 
+                    existingEmails,
+                    existingLinkedinUrls,
+                    onLog,
                     onComplete
                 );
             }
@@ -607,20 +611,22 @@ Genera el mensaje.`
         interpreted: { searchQuery: string; industry: string; targetRoles: string[]; location: string },
         existingWebsites: Set<string>,
         existingCompanyNames: Set<string>,
+        existingEmails: Set<string>,
+        existingLinkedinUrls: Set<string>,
         onLog: LogCallback,
         onComplete: ResultCallback
     ) {
         console.log('[GMAIL] 🚀 searchGmail iniciado');
         onLog(`[GMAIL] 🚀 Iniciando búsqueda Gmail...`);
-        
+
         let query = `${interpreted.searchQuery} ${interpreted.location}`;
-        
+
         // Apply advanced filters to query if available
         if (config.advancedFilters) {
             query = this.buildQueryWithAdvancedFilters(query, config.advancedFilters);
             onLog(`[FILTERS] ✅ Filtros avanzados aplicados a la búsqueda`);
         }
-        
+
         onLog(`[GMAIL] 🗺️ Buscando: "${query}" (Smart Loop x4)...`);
         console.log('[GMAIL] Query:', query);
 
@@ -666,7 +672,7 @@ Genera el mensaje.`
             }
 
             onLog(`[DEBUG] 🗺️ Maps devolvió ${mapsResults.length} resultados...`);
-            
+
             // Analyze what Apify returned
             const withWebsiteRaw = mapsResults.filter((r: any) => r.website).length;
             const withEmailRaw = mapsResults.filter((r: any) => r.email || r.emails?.length).length;
@@ -684,7 +690,7 @@ Genera el mensaje.`
                 } else if (item.websiteUrl) {
                     website = item.websiteUrl.replace(/^https?:\/\//, '').replace(/\/$/, '').replace(/^www\./, '');
                 }
-                
+
                 // Extract email - try multiple field names
                 let email = '';
                 if (item.email) {
@@ -692,7 +698,7 @@ Genera el mensaje.`
                 } else if (item.emails && Array.isArray(item.emails) && item.emails.length > 0) {
                     email = item.emails[0];
                 }
-                
+
                 return {
                     id: String(item.placeId || `lead-${Date.now()}-${attempts}-${index}`),
                     source: 'gmail' as const,
@@ -726,12 +732,12 @@ Genera el mensaje.`
             const newCandidates = allLeads.filter(lead => {
                 const cleanWeb = lead.website?.replace('www.', '').toLowerCase();
                 const cleanName = lead.companyName.toLowerCase();
-                
+
                 // Check if already in validLeads from this session
-                const isSessionDuplicate = validLeads.some(v => 
+                const isSessionDuplicate = validLeads.some(v =>
                     v.website === lead.website || v.companyName === lead.companyName
                 );
-                
+
                 return !isSessionDuplicate;
             });
 
@@ -797,10 +803,10 @@ Genera el mensaje.`
             // Filter leads with email (but allow leads without email as fallback)
             const leadsWithEmail = allLeads.filter(l => l.decisionMaker?.email);
             const slotsRemaining = targetCount - validLeads.length;
-            
+
             // Use leads with email, but if not enough, add leads without email
             let finalCandidates = leadsWithEmail.slice(0, slotsRemaining);
-            
+
             if (finalCandidates.length < slotsRemaining && leadsWithEmail.length < allLeads.length) {
                 const leadsWithoutEmail = allLeads.filter(l => !l.decisionMaker?.email);
                 const slotsStillNeeded = slotsRemaining - finalCandidates.length;
@@ -822,9 +828,11 @@ Genera el mensaje.`
             const deduplicatedCandidates = deduplicationService.filterUniqueCandidates(
                 finalCandidates,
                 existingWebsites,
-                existingCompanyNames
+                existingCompanyNames,
+                existingEmails,
+                existingLinkedinUrls
             );
-            
+
             if (deduplicatedCandidates.length < finalCandidates.length) {
                 onLog(
                     `[DEDUP] ⚠️ ${finalCandidates.length - deduplicatedCandidates.length} candidatos rechazados (ya en historial). ` +
@@ -851,7 +859,7 @@ Genera el mensaje.`
         // STAGE 3: Quick AI analysis
         if (this.openaiKey && this.isRunning) {
             const leadsToAnalyze = validLeads.slice(0, targetCount);
-            
+
             for (let i = 0; i < leadsToAnalyze.length && this.isRunning; i++) {
                 const lead = leadsToAnalyze[i];
                 lead.aiAnalysis.generatedIcebreaker = `Hola, he visto vuestra web ${lead.website}...`;
@@ -866,7 +874,7 @@ Genera el mensaje.`
                         lead.aiAnalysis.businessMoment = analysis.businessMoment;
                         lead.aiAnalysis.salesAngle = analysis.salesAngle;
                         lead.aiAnalysis.fullMessage = analysis.personalizedMessage;
-                        
+
                         // Generate Message A (Product-focused)
                         const messages = await this.generateOneMessage(lead);
                         lead.messageA = messages.messageA;
@@ -891,19 +899,21 @@ Genera el mensaje.`
         interpreted: { searchQuery: string; industry: string; targetRoles: string[]; location: string },
         existingWebsites: Set<string>,
         existingCompanyNames: Set<string>,
+        existingEmails: Set<string>,
+        existingLinkedinUrls: Set<string>,
         onLog: LogCallback,
         onComplete: ResultCallback
     ) {
         console.log('[LINKEDIN] 🚀 searchLinkedIn iniciado');
         onLog(`[LINKEDIN] 🚀 Iniciando búsqueda LinkedIn...`);
-        
+
         const targetCount = config.maxResults;
         if (!targetCount || targetCount < 1) {
             onLog(`[ERROR] ❌ maxResults inválido: ${targetCount}. Usando 1.`);
             onComplete([]);
             return;
         }
-        
+
         const validLeads: Lead[] = [];
         let attempts = 0;
         const MAX_ATTEMPTS = 10;
@@ -952,25 +962,94 @@ Genera el mensaje.`
                     break;
                 }
 
-                // Process profiles - Accumulate candidates first
-                const POSTS_SCRAPER = 'LQQIXN9Othf8f7R5n';
-                const attemptCandidates: Lead[] = [];
-
-                for (let i = 0; i < linkedInProfiles.length && this.isRunning; i++) {
-                    if (validLeads.length >= targetCount) break;
-
+                // Transform raw profiles into provisional Leads
+                const provisionalCandidates: Lead[] = [];
+                for (let i = 0; i < linkedInProfiles.length; i++) {
                     const profile = linkedInProfiles[i];
-                    onLog(`[RESEARCH] 🧠 Analizando: ${profile.title.split(' - ')[0]}...`);
-
                     const titleParts = (profile.title || '').split(' - ');
                     const name = titleParts[0]?.replace(' | LinkedIn', '').trim() || 'Usuario LinkedIn';
                     const role = this.extractRole(profile.title) || 'Decisor';
                     const company = this.extractCompany(profile.title) || 'Empresa Desconocida';
 
+                    provisionalCandidates.push({
+                        id: `linkedin-${Date.now()}-${i}`,
+                        source: 'linkedin',
+                        companyName: company,
+                        website: '',
+                        location: interpreted.location,
+                        decisionMaker: {
+                            name,
+                            role,
+                            email: '',
+                            phone: '',
+                            linkedin: profile.url
+                        },
+                        aiAnalysis: {
+                            summary: '',
+                            fullAnalysis: '',
+                            psychologicalProfile: '',
+                            businessMoment: '',
+                            salesAngle: '',
+                            fullMessage: '',
+                            generatedIcebreaker: '',
+                            painPoints: []
+                        },
+                        isNPLPotential: false,
+                        status: 'scraped'
+                    });
+                }
+
+                // ═══════════════════════════════════════════════════════════════════════════
+                // DEDUPLICATION: Filter against current session & global history BEFORE analysis
+                // ═══════════════════════════════════════════════════════════════════════════
+                const sessionUnique = provisionalCandidates.filter(candidate =>
+                    !validLeads.some(dl => dl.companyName === candidate.companyName || dl.decisionMaker?.linkedin === candidate.decisionMaker?.linkedin)
+                );
+
+                let globalUnique: Lead[] = [];
+                if (sessionUnique.length > 0) {
+                    onLog(`[DEDUP] 🎯 Filtrando ${sessionUnique.length} candidatos LinkedIn contra historial global...`);
+                    globalUnique = deduplicationService.filterUniqueCandidates(
+                        sessionUnique,
+                        existingWebsites,
+                        existingCompanyNames,
+                        existingEmails,
+                        existingLinkedinUrls
+                    );
+
+                    if (globalUnique.length < sessionUnique.length) {
+                        onLog(
+                            `[DEDUP] ⚠️ ${sessionUnique.length - globalUnique.length} duplicados descartados. ` +
+                            `Quedan ${globalUnique.length} nuevos por procesar.`
+                        );
+                    }
+                }
+
+                if (globalUnique.length === 0) {
+                    onLog(`[LINKEDIN-ATTEMPT ${attempts}] ℹ️ Todos los candidatos de esta página ya existen en historial.`);
+                    currentPage++;
+                    continue;
+                }
+
+                // Slice the results exactly to what we need
+                const remainingSlots = targetCount - validLeads.length;
+                const candidatesToProcess = globalUnique.slice(0, remainingSlots);
+
+                onLog(`[INFO] Procesando ${candidatesToProcess.length} leads únicos (saltando el resto para respetar target: ${targetCount}).`);
+
+                const POSTS_SCRAPER = 'LQQIXN9Othf8f7R5n';
+
+                // Process AI only for the needed unique profiles
+                for (let i = 0; i < candidatesToProcess.length && this.isRunning; i++) {
+                    if (validLeads.length >= targetCount) break;
+
+                    const candidate = candidatesToProcess[i];
+                    onLog(`[RESEARCH] 🧠 Analizando: ${candidate.decisionMaker?.name}...`);
+
                     let recentPostsText = "";
                     try {
                         const postsData = await this.callApifyActor(POSTS_SCRAPER, {
-                            username: profile.url,
+                            username: candidate.decisionMaker?.linkedin,
                             limit: 3
                         }, () => { });
 
@@ -981,80 +1060,39 @@ Genera el mensaje.`
                         // Silent - posts are optional
                     }
 
-                    const researchDossier = `PERFIL: ${name}\nHeadline: ${profile.title}\nReciente: ${recentPostsText || "N/A"}`;
+                    const researchDossier = `PERFIL: ${candidate.decisionMaker?.name}\nHeadline: ${candidate.decisionMaker?.role} en ${candidate.companyName}\nReciente: ${recentPostsText || "N/A"}`;
 
                     try {
                         const analysis = await this.generateUltraAnalysis({
-                            companyName: company,
-                            decisionMaker: { name, role, linkedin: profile.url }
+                            companyName: candidate.companyName,
+                            decisionMaker: { name: candidate.decisionMaker?.name, role: candidate.decisionMaker?.role, linkedin: candidate.decisionMaker?.linkedin }
                         } as Lead, researchDossier);
 
                         // Generate Message A (Product-focused)
                         const messages = await this.generateOneMessage({
-                            companyName: company,
-                            decisionMaker: { name, role, linkedin: profile.url }
+                            companyName: candidate.companyName,
+                            decisionMaker: { name: candidate.decisionMaker?.name, role: candidate.decisionMaker?.role, linkedin: candidate.decisionMaker?.linkedin }
                         } as Lead);
 
-                        attemptCandidates.push({
-                            id: `linkedin-${Date.now()}-${attemptCandidates.length}`,
-                            source: 'linkedin',
-                            companyName: company,
-                            website: '',
-                            location: interpreted.location,
-                            decisionMaker: {
-                                name,
-                                role,
-                                email: '',
-                                phone: '',
-                                linkedin: profile.url
-                            },
-                            aiAnalysis: {
-                                summary: `Psicología: ${analysis.bottleneck}`,
-                                fullAnalysis: analysis.fullAnalysis,
-                                psychologicalProfile: analysis.psychologicalProfile,
-                                businessMoment: analysis.businessMoment,
-                                salesAngle: analysis.salesAngle,
-                                fullMessage: analysis.personalizedMessage,
-                                generatedIcebreaker: analysis.bottleneck,
-                                painPoints: []
-                            },
-                            messageA: messages.messageA,
-                            isNPLPotential: false,
-                            status: 'ready'
-                        });
+                        candidate.aiAnalysis = {
+                            summary: `Psicología: ${analysis.bottleneck}`,
+                            fullAnalysis: analysis.fullAnalysis,
+                            psychologicalProfile: analysis.psychologicalProfile,
+                            businessMoment: analysis.businessMoment,
+                            salesAngle: analysis.salesAngle,
+                            fullMessage: analysis.personalizedMessage,
+                            generatedIcebreaker: analysis.bottleneck,
+                            painPoints: []
+                        };
+                        candidate.messageA = messages.messageA;
+                        candidate.status = 'ready';
+
+                        validLeads.push(candidate);
+                        onLog(`[SUCCESS] ✅ Lead ${validLeads.length}/${targetCount}: ${candidate.companyName}`);
+
                     } catch (e) {
-                        onLog(`[RESEARCH] ⚠️ Análisis fallido para ${name}`);
+                        onLog(`[RESEARCH] ⚠️ Análisis fallido para ${candidate.decisionMaker?.name}`);
                     }
-                }
-
-                // ═══════════════════════════════════════════════════════════════════════════
-                // DEDUPLICATION: Filter against current session & global history
-                // ═══════════════════════════════════════════════════════════════════════════
-                const sessionUnique = attemptCandidates.filter(candidate => 
-                    !validLeads.some(dl => dl.companyName === candidate.companyName)
-                );
-
-                if (sessionUnique.length > 0) {
-                    onLog(`[DEDUP] 🎯 Filtrando ${sessionUnique.length} candidatos contra historial global...`);
-                    const globalUnique = deduplicationService.filterUniqueCandidates(
-                        sessionUnique,
-                        existingWebsites,
-                        existingCompanyNames
-                    );
-
-                    if (globalUnique.length < sessionUnique.length) {
-                        onLog(
-                            `[DEDUP] ⚠️ ${sessionUnique.length - globalUnique.length} duplicados descartados (ya en historial). ` +
-                            `Quedaron ${globalUnique.length} nuevos.`
-                        );
-                    }
-
-                    for (const lead of globalUnique) {
-                        validLeads.push(lead);
-                        onLog(`[SUCCESS] ✅ Lead ${validLeads.length}/${targetCount}: ${lead.companyName}`);
-                    }
-                } else {
-                    onLog(`[LINKEDIN-ATTEMPT ${attempts}] ℹ️ Todos fueron duplicados de esta sesión.`);
                 }
 
                 currentPage++;
