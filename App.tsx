@@ -26,7 +26,7 @@ function App() {
     query: PROJECT_CONFIG.targets.icp,
     source: 'linkedin',
     mode: 'fast',
-    maxResults: 10
+    maxResults: 1
   });
 
   const [isSearching, setIsSearching] = useState(false);

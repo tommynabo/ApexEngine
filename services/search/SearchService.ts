@@ -624,7 +624,12 @@ Genera el mensaje.`
         onLog(`[GMAIL] 🗺️ Buscando: "${query}" (Smart Loop x4)...`);
         console.log('[GMAIL] Query:', query);
 
-        const targetCount = config.maxResults || 10;
+        const targetCount = config.maxResults;
+        if (!targetCount || targetCount < 1) {
+            onLog(`[ERROR] ❌ maxResults inválido: ${targetCount}. Usando 1.`);
+            onComplete([]);
+            return;
+        }
         const validLeads: Lead[] = [];
         let attempts = 0;
         const MAX_ATTEMPTS = 10;
@@ -892,7 +897,13 @@ Genera el mensaje.`
         console.log('[LINKEDIN] 🚀 searchLinkedIn iniciado');
         onLog(`[LINKEDIN] 🚀 Iniciando búsqueda LinkedIn...`);
         
-        const targetCount = config.maxResults || 5;
+        const targetCount = config.maxResults;
+        if (!targetCount || targetCount < 1) {
+            onLog(`[ERROR] ❌ maxResults inválido: ${targetCount}. Usando 1.`);
+            onComplete([]);
+            return;
+        }
+        
         const validLeads: Lead[] = [];
         let attempts = 0;
         const MAX_ATTEMPTS = 10;

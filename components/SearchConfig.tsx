@@ -79,8 +79,8 @@ export function SearchConfig({ config, onChange, onSearch, onStop, isSearching, 
                   min="1"
                   max="50"
                   step="1"
-                  value={config.maxResults}
-                  onChange={(e) => onChange({ maxResults: parseInt(e.target.value) || 10 })}
+                  value={config.maxResults || 1}
+                  onChange={(e) => onChange({ maxResults: parseInt(e.target.value) })}
                   className="w-full h-2 bg-secondary rounded-lg appearance-none cursor-pointer accent-primary hover:accent-primary/80 transition-all"
                   disabled={isSearching}
                 />
