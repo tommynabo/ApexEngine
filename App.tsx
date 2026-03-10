@@ -11,7 +11,6 @@ import { HistoryModal } from './components/HistoryModal';
 import { Lead, SearchConfigState, PageView, SearchSession } from './lib/types';
 import { PROJECT_CONFIG } from './config/project';
 import { searchService } from './services/search/SearchService';
-import { autopilotService } from './services/autopilot/AutopilotService';
 import { supabase } from './lib/supabase';
 
 function App() {
@@ -41,10 +40,8 @@ function App() {
   const [selectedHistorySession, setSelectedHistorySession] = useState<SearchSession | null>(null);
   const [totalLeadsGenerated, setTotalLeadsGenerated] = useState(0);
 
-  // Autopilot State
-  const [autopilotEnabled, setAutopilotEnabled] = useState(autopilotService.getConfig().enabled);
-  const [autopilotTime, setAutopilotTime] = useState(autopilotService.getConfig().scheduledTime);
-  const [autopilotQuantity, setAutopilotQuantity] = useState(autopilotService.getConfig().leadsQuantity);
+
+
 
   // Modal State
   const [isCriteriaModalOpen, setIsCriteriaModalOpen] = useState(false);
@@ -86,12 +83,8 @@ function App() {
       }
     });
 
-    // Initialize autopilot monitoring
-    autopilotService.initialize();
-
     return () => {
       searchService.stop();
-      autopilotService.destroy();
     };
   }, []);
 
@@ -359,142 +352,6 @@ function App() {
       setIsSearching(false);
       setTerminalExpanded(false);
       addLog('[USUARIO] 🛑 Generación detenida manualmente.');
-      autopilotService.markSearchComplete();
-    }
-  };
-
-  // --- Lead Actions (removed - no longer needed) ---
-
-  // --- Autopilot Logic ---
-
-  const executeAutopilotSearch = (quantity: number) => {
-    const autopilotConfig = { ...config, maxResults: quantity };
-
-    setIsSearching(true);
-    setTerminalVisible(true);
-    setTerminalExpanded(true);
-    setLogs([]);
-    setLeads([]);
-
-    searchService.startSearch(
-      autopilotConfig,
-      (message) => addLog(message),
-      async (results) => {
-        setIsSearching(false);
-        setLeads(results);
-
-        const newSession: SearchSession = {
-          id: Date.now().toString(),
-          date: new Date(),
-          query: autopilotConfig.query,
-          source: autopilotConfig.source,
-          resultsCount: results.length,
-          leads: results
-        };
-        setHistory(prev => [newSession, ...prev]);
-        setTotalLeadsGenerated(prev => prev + results.length);
-
-        if (userId) {
-          try {
-            // 1. Insert search record and get ID
-            const { data, error: searchError } = await supabase
-              .from('search_history')
-              .insert({
-                user_id: userId,
-                search_query: autopilotConfig.query,
-                source: autopilotConfig.source,
-                mode: autopilotConfig.mode,
-                total_results: results.length,
-                results_extracted: results.length,
-                status: 'completed',
-                executed_at: new Date().toISOString(),
-                completed_at: new Date().toISOString()
-              })
-              .select();
-
-            if (searchError) {
-              console.error('DB Error saving search_history:', searchError);
-              addLog(`[AUTOPILOT] ⚠️ Error al guardar búsqueda: ${searchError.message}`);
-              return;
-            }
-
-            if (!data || data.length === 0) {
-              addLog(`[AUTOPILOT] ⚠️ No se obtuvo ID de búsqueda.`);
-              return;
-            }
-
-            const searchId = data[0].id;
-            addLog(`[AUTOPILOT] ✅ Búsqueda registrada (ID: ${searchId})`);
-
-            // 2. Save each lead to the leads table with search_id reference
-            const leadsToInsert = results.map(lead => ({
-              user_id: userId,
-              search_id: searchId,
-              name: lead.decisionMaker?.name || lead.companyName || '',
-              company_name: lead.companyName || '',
-              job_title: lead.decisionMaker?.role || '',
-              linkedin_url: lead.decisionMaker?.linkedin || '',
-              email: lead.decisionMaker?.email || '',
-              phone: lead.decisionMaker?.phone || '',
-              company_website: lead.website || '',
-              location: lead.location || '',
-              ai_summary: lead.aiAnalysis?.summary || '',
-              ai_pain_points: lead.aiAnalysis?.painPoints || [],
-              ai_business_moment: lead.aiAnalysis?.businessMoment || '',
-              ai_is_npl_potential: lead.isNPLPotential || false,
-              status: 'scraped'
-            }));
-
-            const { error: leadsError } = await supabase
-              .from('leads')
-              .insert(leadsToInsert);
-
-            if (leadsError) {
-              console.error('DB Error saving leads:', leadsError);
-              addLog(`[AUTOPILOT] ⚠️ Error al guardar ${results.length} contactos: ${leadsError.message}`);
-            } else {
-              addLog(`[AUTOPILOT] ✅ ${results.length} contactos guardados correctamente.`);
-            }
-          } catch (err) {
-            console.error('Failed to save autopilot results to DB', err);
-            addLog(`[AUTOPILOT] ❌ Excepción al guardar: ${err}`);
-          }
-        }
-
-        autopilotService.markSearchComplete();
-        playGlassSound();
-        setTimeout(() => setTerminalExpanded(false), 1500);
-      },
-      userId
-    );
-  };
-
-  useEffect(() => {
-    autopilotService.setCallbacks(executeAutopilotSearch, addLog);
-  }, [userId, config]);
-
-  const handleAutopilotToggle = (enabled: boolean) => {
-    setAutopilotEnabled(enabled);
-    if (enabled) {
-      autopilotService.enable(autopilotTime, autopilotQuantity);
-    } else {
-      autopilotService.disable();
-    }
-  };
-
-  const handleAutopilotTimeChange = (time: string) => {
-    setAutopilotTime(time);
-    autopilotService.updateTime(time);
-    if (autopilotEnabled) {
-      autopilotService.enable(time, autopilotQuantity);
-    }
-  };
-
-  const handleAutopilotQuantityChange = (quantity: number) => {
-    setAutopilotQuantity(quantity);
-    autopilotService.updateQuantity(quantity);
-    if (autopilotEnabled) {
-      autopilotService.enable(autopilotTime, quantity);
     }
   };
 
@@ -551,13 +408,6 @@ function App() {
               onStop={handleStop}
               isSearching={isSearching}
               onOpenCriteria={handleOpenCriteria}
-              autopilotEnabled={autopilotEnabled}
-              autopilotTime={autopilotTime}
-              autopilotQuantity={autopilotQuantity}
-              onAutopilotToggle={handleAutopilotToggle}
-              onAutopilotTimeChange={handleAutopilotTimeChange}
-              onAutopilotQuantityChange={handleAutopilotQuantityChange}
-              autopilotRanToday={autopilotService.hasRunToday()}
               totalLeadsGenerated={totalLeadsGenerated}
             />
 

@@ -9,20 +9,18 @@ interface SearchConfigProps {
   onSearch: () => void;
   isSearching: boolean;
   onOpenCriteria?: () => void;
-  // Autopilot props
-  autopilotEnabled: boolean;
-  autopilotTime: string;
-  autopilotQuantity: number;
-  onAutopilotToggle: (enabled: boolean) => void;
-  onAutopilotTimeChange: (time: string) => void;
-  onAutopilotQuantityChange: (quantity: number) => void;
-  autopilotRanToday: boolean;
   totalLeadsGenerated: number;
 }
 
-export function SearchConfig({ config, onChange, onSearch, onStop, isSearching, onOpenCriteria, autopilotEnabled, autopilotTime, autopilotQuantity, onAutopilotToggle, onAutopilotTimeChange, onAutopilotQuantityChange, autopilotRanToday, totalLeadsGenerated }: SearchConfigProps & { onStop: () => void }) {
-  const [showTimePicker, setShowTimePicker] = useState(false); // Default 10 for auto-pilot
-
+export function SearchConfig({
+  config,
+  onChange,
+  onSearch,
+  onStop,
+  isSearching,
+  onOpenCriteria,
+  totalLeadsGenerated
+}: SearchConfigProps & { onStop: () => void }) {
   // Helper to handle manual number input clearly
   const handleNumberChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     let val = parseInt(e.target.value);
@@ -35,39 +33,26 @@ export function SearchConfig({ config, onChange, onSearch, onStop, isSearching, 
     if (val > maxAllowed) val = maxAllowed;
 
     onChange({ maxResults: val });
-  };
-
-  // Generate hours (00-23)
-  const hours = Array.from({ length: 24 }, (_, i) => i.toString().padStart(2, '0'));
-  // Generate minutes (00, 15, 30, 45) for cleaner UI
-  const minutes = ['00', '15', '30', '45'];
-
-  const handleTimeSelect = (type: 'hour' | 'minute', value: string) => {
-    const [h, m] = (autopilotTime || '10:00').split(':');
-    if (type === 'hour') {
-      onAutopilotTimeChange(`${value}:${m || '00'}`);
-    } else {
-      onAutopilotTimeChange(`${h || '10'}:${value}`);
-      // Optional: Close picker after selecting minutes if you want auto-close
-    }
+    onChange({ maxResults: val });
   };
 
   const isLimitReached = totalLeadsGenerated >= 150;
   const maxAllowedInput = Math.max(1, Math.min(20, 150 - totalLeadsGenerated));
 
   return (
-    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
+      {/* 1. Generador de Leads */}
+      <div className="bg-card border border-border rounded-xl p-6 shadow-sm flex flex-col relative overflow-hidden group hover:border-primary/20 transition-all h-full">
+        <div className="absolute top-0 right-0 w-32 h-32 bg-primary/5 rounded-full blur-3xl -mr-16 -mt-16" />
 
-      {/* Generador Manual */}
-      <div className="bg-card border border-border rounded-xl p-6 shadow-sm flex flex-col justify-between group hover:border-primary/20 transition-all">
         <div>
           <div className="flex items-center gap-3 mb-6">
             <div className="p-2 bg-blue-100 dark:bg-blue-900/30 rounded-lg group-hover:scale-105 transition-transform">
               <Zap className="w-5 h-5 text-blue-600 dark:text-blue-400" />
             </div>
             <div>
-              <h3 className="font-semibold text-lg">Generador Manual</h3>
-              <p className="text-sm text-muted-foreground">Creación bajo demanda</p>
+              <h3 className="font-semibold text-lg text-foreground">Generador de Leads</h3>
+              <p className="text-sm text-muted-foreground">Configuración de búsqueda</p>
             </div>
           </div>
 
@@ -157,136 +142,67 @@ export function SearchConfig({ config, onChange, onSearch, onStop, isSearching, 
             )}
           </div>
         </div>
+      </div>
 
-        {/* Piloto Automático */}
-        <div className="bg-card border border-border rounded-xl p-6 shadow-sm flex flex-col relative overflow-hidden group hover:border-green-500/20 transition-all">
-          {/* Status Indicator */}
-          <div className={`absolute top-0 right-0 p-6 transition-opacity ${autopilotEnabled ? 'opacity-100' : 'opacity-50'}`}>
-            <div className={`w-3 h-3 rounded-full shadow-[0_0_10px_currentColor] ${autopilotEnabled ? 'bg-green-500 text-green-500' : 'bg-gray-300 text-gray-300'}`} />
+      {/* 2. Guía de Uso Rápida */}
+      <div className="bg-zinc-900/50 border border-zinc-800 rounded-xl p-6 shadow-sm flex flex-col h-full relative overflow-hidden">
+        <div className="absolute top-0 right-0 w-32 h-32 bg-primary/5 rounded-full blur-3xl -mr-16 -mt-16" />
+
+        <h3 className="text-lg font-bold text-white flex items-center gap-2 mb-6">
+          <div className="p-1.5 rounded-lg bg-blue-500/10">
+            <svg className="w-5 h-5 text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
           </div>
+          Guía de Uso Rápida
+        </h3>
 
-          <div className="flex items-center gap-3 mb-8">
-            <div className={`p-2 rounded-lg transition-colors ${autopilotEnabled ? 'bg-green-100 dark:bg-green-900/30' : 'bg-secondary'}`}>
-              <Clock className={`w-5 h-5 ${autopilotEnabled ? 'text-green-600 dark:text-green-400' : 'text-muted-foreground'}`} />
+        <div className="space-y-6 relative z-10">
+          <div className="flex gap-4 group">
+            <div className="flex-shrink-0 w-8 h-8 rounded-full bg-zinc-800 border border-zinc-700 flex items-center justify-center text-xs font-bold text-zinc-400 group-hover:bg-blue-500/20 group-hover:text-blue-400 group-hover:border-blue-500/30 transition-all">
+              1
             </div>
             <div>
-              <h3 className="font-semibold text-lg">Piloto Automático</h3>
-              <p className="text-sm text-muted-foreground">{autopilotEnabled ? (autopilotRanToday ? 'Ejecutado hoy ✅' : 'Activo diariamente') : 'Desactivado'}</p>
+              <p className="text-sm font-bold text-zinc-200 mb-1">Criterio de Búsqueda</p>
+              <p className="text-xs text-zinc-500 leading-relaxed">
+                Haz clic en <span className="text-zinc-300">"Criterio de Búsqueda"</span> para definir exactamente qué perfiles quieres encontrar. Usa palabras clave como "Empresario", "CEO" o "Inmobiliaria".
+              </p>
             </div>
           </div>
 
-          <div className="flex-1 flex flex-col items-center justify-center space-y-6 relative">
-            <div className="text-center w-full z-10">
-              {/* Time Display Trigger */}
-              <div
-                className={`relative cursor-pointer transition-all ${autopilotEnabled ? 'opacity-100' : 'opacity-50 pointer-events-none'
-                  }`}
-                onClick={() => { onAutopilotToggle(true); setShowTimePicker(!showTimePicker); }}
-              >
-                <div
-                  className="text-6xl font-bold tracking-tight mb-2 select-none hover:scale-105 transition-transform"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    if (autopilotEnabled) setShowTimePicker(!showTimePicker);
-                  }}
-                >
-                  {autopilotTime}
-                </div>
-                <p className="text-xs font-bold text-muted-foreground uppercase tracking-widest bg-secondary/50 px-3 py-1 rounded-full inline-block group-hover:bg-secondary transition-colors">
-                  {showTimePicker ? 'Cerrar Selector' : 'Cambiar Hora'}
-                </p>
-
-                {/* Custom Dropdown Picker */}
-                {showTimePicker && autopilotEnabled && (
-                  <div className="absolute top-full left-1/2 -translate-x-1/2 mt-4 bg-popover text-popover-foreground border border-border shadow-xl rounded-xl p-4 flex gap-4 z-50 animate-in fade-in zoom-in-95 duration-200 min-w-[200px]">
-
-                    {/* Hours Column */}
-                    <div className="flex-1">
-                      <span className="text-xs font-bold text-muted-foreground mb-2 block uppercase text-center">Hora</span>
-                      <div className="h-48 overflow-y-auto space-y-1 scrollbar-thin scrollbar-thumb-secondary pr-2">
-                        {hours.map(h => (
-                          <button
-                            key={h}
-                            onClick={() => handleTimeSelect('hour', h)}
-                            className={`w-full py-1.5 rounded-md text-sm font-medium transition-colors ${autopilotTime.startsWith(h)
-                              ? 'bg-primary text-primary-foreground'
-                              : 'hover:bg-secondary'
-                              }`}
-                          >
-                            {h}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-
-                    <div className="w-[1px] bg-border my-2" />
-
-                    {/* Minutes Column */}
-                    <div className="flex-1">
-                      <span className="text-xs font-bold text-muted-foreground mb-2 block uppercase text-center">Min</span>
-                      <div className="h-48 overflow-y-auto space-y-1 scrollbar-thin scrollbar-thumb-secondary">
-                        {minutes.map(m => (
-                          <button
-                            key={m}
-                            onClick={() => handleTimeSelect('minute', m)}
-                            className={`w-full py-1.5 rounded-md text-sm font-medium transition-colors ${autopilotTime.endsWith(m)
-                              ? 'bg-primary text-primary-foreground'
-                              : 'hover:bg-secondary'
-                              }`}
-                          >
-                            {m}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  </div>
-                )}
-              </div>
+          <div className="flex gap-4 group">
+            <div className="flex-shrink-0 w-8 h-8 rounded-full bg-zinc-800 border border-zinc-700 flex items-center justify-center text-xs font-bold text-zinc-400 group-hover:bg-blue-500/20 group-hover:text-blue-400 group-hover:border-blue-500/30 transition-all">
+              2
             </div>
-
-            {/* Backdrop to close picker */}
-            {showTimePicker && (
-              <div
-                className="fixed inset-0 z-0 bg-transparent"
-                onClick={() => setShowTimePicker(false)}
-              />
-            )}
-
-            {/* Scheduler Quantity Selector */}
-            <div className={`mt-8 w-full max-w-[200px] transition-all duration-300 ${autopilotEnabled ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4 pointer-events-none'}`}>
-              <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider block mb-2">
-                Leads por día
-              </label>
-              <div className="flex items-center gap-2 bg-secondary/30 p-1.5 rounded-lg border border-border/50">
-                <input
-                  type="range"
-                  min="5"
-                  max="50"
-                  step="5"
-                  value={autopilotQuantity}
-                  onChange={(e) => onAutopilotQuantityChange(parseInt(e.target.value))}
-                  className="w-full h-1.5 bg-secondary rounded-lg appearance-none cursor-pointer accent-green-500 hover:accent-green-600 transition-all"
-                />
-                <span className="font-mono text-sm font-bold w-6 text-center">{autopilotQuantity}</span>
-              </div>
+            <div>
+              <p className="text-sm font-bold text-zinc-200 mb-1">Ajustar Cantidad</p>
+              <p className="text-xs text-zinc-500 leading-relaxed">
+                Selecciona cuántos leads quieres extraer en esta sesión. Recuerda que el programa está limitado a un máximo de <span className="text-blue-400 font-bold">20 personas por búsqueda</span>.
+              </p>
             </div>
           </div>
 
-          <div className="mt-8 flex items-center justify-between pt-6 border-t border-border relative z-0">
-            <span className="text-sm font-medium text-muted-foreground">Estado del Sistema</span>
-            <button
-              onClick={() => onAutopilotToggle(!autopilotEnabled)}
-              className={`relative inline-flex h-7 w-12 items-center rounded-full transition-all focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 ${autopilotEnabled ? 'bg-green-500 shadow-[0_0_15px_-3px_rgba(34,197,94,0.6)]' : 'bg-secondary'
-                }`}
-            >
-              <span
-                className={`${autopilotEnabled ? 'translate-x-6' : 'translate-x-1'
-                  } inline-block h-5 w-5 transform rounded-full bg-white shadow-md transition-transform`}
-              />
-            </button>
+          <div className="flex gap-4 group">
+            <div className="flex-shrink-0 w-8 h-8 rounded-full bg-zinc-800 border border-zinc-700 flex items-center justify-center text-xs font-bold text-zinc-400 group-hover:bg-blue-500/20 group-hover:text-blue-400 group-hover:border-blue-500/30 transition-all">
+              3
+            </div>
+            <div>
+              <p className="text-sm font-bold text-zinc-200 mb-1">Generar y Analizar</p>
+              <p className="text-xs text-zinc-500 leading-relaxed">
+                Pulsa <span className="text-blue-400 font-bold">"Generar Ahora"</span>. El sistema encontrará los perfiles, analizará sus webs y diseñará un mensaje personalizado para cada uno automáticamente.
+              </p>
+            </div>
           </div>
         </div>
 
+        <div className="mt-auto pt-6">
+          <div className="p-4 rounded-lg bg-blue-500/5 border border-blue-500/10">
+            <p className="text-[10px] uppercase tracking-widest font-bold text-blue-400/60 mb-2">Consejo Premium</p>
+            <p className="text-xs text-zinc-400 italic">
+              "Para mejores resultados en LinkedIn, procura usar filtros de ubicación exactos en tu criterio de búsqueda."
+            </p>
+          </div>
+        </div>
       </div>
     </div>
   );
