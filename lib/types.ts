@@ -1,4 +1,4 @@
-export type PlatformSource = 'gmail' | 'linkedin';
+export type PlatformSource = 'gmail' | 'linkedin' | 'instagram';
 export type SearchMode = 'fast' | 'deep';
 export type PageView = 'login' | 'dashboard' | 'campaigns';
 

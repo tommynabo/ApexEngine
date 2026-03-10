@@ -37,11 +37,11 @@ export function SearchConfig({ config, onChange, onSearch, onStop, isSearching, 
   const minutes = ['00', '15', '30', '45'];
 
   const handleTimeSelect = (type: 'hour' | 'minute', value: string) => {
-    const [h, m] = scheduleTime.split(':');
+    const [h, m] = (autopilotTime || '10:00').split(':');
     if (type === 'hour') {
-      setScheduleTime(`${value}:${m}`);
+      onAutopilotTimeChange(`${value}:${m || '00'}`);
     } else {
-      setScheduleTime(`${h}:${value}`);
+      onAutopilotTimeChange(`${h || '10'}:${value}`);
       // Optional: Close picker after selecting minutes if you want auto-close
     }
   };
@@ -98,173 +98,167 @@ export function SearchConfig({ config, onChange, onSearch, onStop, isSearching, 
                 />
               </div>
             </div>
-
-            <div className="p-3 bg-secondary/30 rounded-lg border border-border/50">
-              <p className="text-xs text-muted-foreground">
-                <span className="font-semibold text-foreground">Objetivo:</span> {PROJECT_CONFIG.targets.icp}
-              </p>
-            </div>
           </div>
-        </div>
 
-        <div className="mt-6 space-y-3">
-          <button
-            onClick={onOpenCriteria}
-            disabled={isSearching}
-            className="w-full h-[40px] flex items-center justify-center rounded-lg font-bold text-sm transition-all shadow-md bg-slate-200/50 text-slate-700 hover:bg-slate-200 dark:bg-slate-800/50 dark:text-slate-300 dark:hover:bg-slate-800 disabled:opacity-50"
-          >
-            ✎ Criterio de Búsqueda
-          </button>
-
-          {isSearching ? (
+          <div className="mt-6 space-y-3">
             <button
-              onClick={onStop}
-              className="w-full h-[48px] flex items-center justify-center rounded-lg font-bold text-sm transition-all shadow-lg bg-red-100 text-red-600 hover:bg-red-200 dark:bg-red-900/30 dark:text-red-400 dark:hover:bg-red-900/50 active:scale-[0.98]"
+              onClick={onOpenCriteria}
+              disabled={isSearching}
+              className="w-full h-[40px] flex items-center justify-center rounded-lg font-bold text-sm transition-all shadow-md bg-slate-200/50 text-slate-700 hover:bg-slate-200 dark:bg-slate-800/50 dark:text-slate-300 dark:hover:bg-slate-800 disabled:opacity-50"
             >
-              <div className="w-2 h-2 bg-red-500 rounded-sm animate-pulse mr-2" />
-              DETENER GENERACIÓN
+              ✎ Criterio de Búsqueda
             </button>
-          ) : (
-            <button
-              onClick={onSearch}
-              className="w-full h-[48px] flex items-center justify-center rounded-lg font-bold text-sm transition-all shadow-lg shadow-primary/20 bg-primary text-primary-foreground hover:brightness-110 active:scale-[0.98]"
-            >
-              <Play className="w-4 h-4 mr-2 fill-current" />
-              Generar Ahora
-            </button>
-          )}
-        </div>
-      </div>
 
-      {/* Piloto Automático */}
-      <div className="bg-card border border-border rounded-xl p-6 shadow-sm flex flex-col relative overflow-hidden group hover:border-green-500/20 transition-all">
-        {/* Status Indicator */}
-        <div className={`absolute top-0 right-0 p-6 transition-opacity ${autopilotEnabled ? 'opacity-100' : 'opacity-50'}`}>
-          <div className={`w-3 h-3 rounded-full shadow-[0_0_10px_currentColor] ${autopilotEnabled ? 'bg-green-500 text-green-500' : 'bg-gray-300 text-gray-300'}`} />
-        </div>
-
-        <div className="flex items-center gap-3 mb-8">
-          <div className={`p-2 rounded-lg transition-colors ${autopilotEnabled ? 'bg-green-100 dark:bg-green-900/30' : 'bg-secondary'}`}>
-            <Clock className={`w-5 h-5 ${autopilotEnabled ? 'text-green-600 dark:text-green-400' : 'text-muted-foreground'}`} />
-          </div>
-          <div>
-            <h3 className="font-semibold text-lg">Piloto Automático</h3>
-            <p className="text-sm text-muted-foreground">{autopilotEnabled ? (autopilotRanToday ? 'Ejecutado hoy ✅' : 'Activo diariamente') : 'Desactivado'}</p>
-          </div>
-        </div>
-
-        <div className="flex-1 flex flex-col items-center justify-center space-y-6 relative">
-          <div className="text-center w-full z-10">
-            {/* Time Display Trigger */}
-            <div
-              className={`relative cursor-pointer transition-all ${autopilotEnabled ? 'opacity-100' : 'opacity-50 pointer-events-none'
-                }`}
-              onClick={() => { onAutopilotToggle(true); setShowTimePicker(!showTimePicker); }}
-            >
-              <div
-                className="text-6xl font-bold tracking-tight mb-2 select-none hover:scale-105 transition-transform"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  if (autopilotEnabled) setShowTimePicker(!showTimePicker);
-                }}
+            {isSearching ? (
+              <button
+                onClick={onStop}
+                className="w-full h-[48px] flex items-center justify-center rounded-lg font-bold text-sm transition-all shadow-lg bg-red-100 text-red-600 hover:bg-red-200 dark:bg-red-900/30 dark:text-red-400 dark:hover:bg-red-900/50 active:scale-[0.98]"
               >
-                {autopilotTime}
-              </div>
-              <p className="text-xs font-bold text-muted-foreground uppercase tracking-widest bg-secondary/50 px-3 py-1 rounded-full inline-block group-hover:bg-secondary transition-colors">
-                {showTimePicker ? 'Cerrar Selector' : 'Cambiar Hora'}
-              </p>
+                <div className="w-2 h-2 bg-red-500 rounded-sm animate-pulse mr-2" />
+                DETENER GENERACIÓN
+              </button>
+            ) : (
+              <button
+                onClick={onSearch}
+                className="w-full h-[48px] flex items-center justify-center rounded-lg font-bold text-sm transition-all shadow-lg shadow-primary/20 bg-primary text-primary-foreground hover:brightness-110 active:scale-[0.98]"
+              >
+                <Play className="w-4 h-4 mr-2 fill-current" />
+                Generar Ahora
+              </button>
+            )}
+          </div>
+        </div>
 
-              {/* Custom Dropdown Picker */}
-              {showTimePicker && autopilotEnabled && (
-                <div className="absolute top-full left-1/2 -translate-x-1/2 mt-4 bg-popover text-popover-foreground border border-border shadow-xl rounded-xl p-4 flex gap-4 z-50 animate-in fade-in zoom-in-95 duration-200 min-w-[200px]">
+        {/* Piloto Automático */}
+        <div className="bg-card border border-border rounded-xl p-6 shadow-sm flex flex-col relative overflow-hidden group hover:border-green-500/20 transition-all">
+          {/* Status Indicator */}
+          <div className={`absolute top-0 right-0 p-6 transition-opacity ${autopilotEnabled ? 'opacity-100' : 'opacity-50'}`}>
+            <div className={`w-3 h-3 rounded-full shadow-[0_0_10px_currentColor] ${autopilotEnabled ? 'bg-green-500 text-green-500' : 'bg-gray-300 text-gray-300'}`} />
+          </div>
 
-                  {/* Hours Column */}
-                  <div className="flex-1">
-                    <span className="text-xs font-bold text-muted-foreground mb-2 block uppercase text-center">Hora</span>
-                    <div className="h-48 overflow-y-auto space-y-1 scrollbar-thin scrollbar-thumb-secondary pr-2">
-                      {hours.map(h => (
-                        <button
-                          key={h}
-                          onClick={() => handleTimeSelect('hour', h)}
-                          className={`w-full py-1.5 rounded-md text-sm font-medium transition-colors ${autopilotTime.startsWith(h)
-                            ? 'bg-primary text-primary-foreground'
-                            : 'hover:bg-secondary'
-                            }`}
-                        >
-                          {h}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
+          <div className="flex items-center gap-3 mb-8">
+            <div className={`p-2 rounded-lg transition-colors ${autopilotEnabled ? 'bg-green-100 dark:bg-green-900/30' : 'bg-secondary'}`}>
+              <Clock className={`w-5 h-5 ${autopilotEnabled ? 'text-green-600 dark:text-green-400' : 'text-muted-foreground'}`} />
+            </div>
+            <div>
+              <h3 className="font-semibold text-lg">Piloto Automático</h3>
+              <p className="text-sm text-muted-foreground">{autopilotEnabled ? (autopilotRanToday ? 'Ejecutado hoy ✅' : 'Activo diariamente') : 'Desactivado'}</p>
+            </div>
+          </div>
 
-                  <div className="w-[1px] bg-border my-2" />
-
-                  {/* Minutes Column */}
-                  <div className="flex-1">
-                    <span className="text-xs font-bold text-muted-foreground mb-2 block uppercase text-center">Min</span>
-                    <div className="h-48 overflow-y-auto space-y-1 scrollbar-thin scrollbar-thumb-secondary">
-                      {minutes.map(m => (
-                        <button
-                          key={m}
-                          onClick={() => handleTimeSelect('minute', m)}
-                          className={`w-full py-1.5 rounded-md text-sm font-medium transition-colors ${autopilotTime.endsWith(m)
-                            ? 'bg-primary text-primary-foreground'
-                            : 'hover:bg-secondary'
-                            }`}
-                        >
-                          {m}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
+          <div className="flex-1 flex flex-col items-center justify-center space-y-6 relative">
+            <div className="text-center w-full z-10">
+              {/* Time Display Trigger */}
+              <div
+                className={`relative cursor-pointer transition-all ${autopilotEnabled ? 'opacity-100' : 'opacity-50 pointer-events-none'
+                  }`}
+                onClick={() => { onAutopilotToggle(true); setShowTimePicker(!showTimePicker); }}
+              >
+                <div
+                  className="text-6xl font-bold tracking-tight mb-2 select-none hover:scale-105 transition-transform"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    if (autopilotEnabled) setShowTimePicker(!showTimePicker);
+                  }}
+                >
+                  {autopilotTime}
                 </div>
-              )}
+                <p className="text-xs font-bold text-muted-foreground uppercase tracking-widest bg-secondary/50 px-3 py-1 rounded-full inline-block group-hover:bg-secondary transition-colors">
+                  {showTimePicker ? 'Cerrar Selector' : 'Cambiar Hora'}
+                </p>
+
+                {/* Custom Dropdown Picker */}
+                {showTimePicker && autopilotEnabled && (
+                  <div className="absolute top-full left-1/2 -translate-x-1/2 mt-4 bg-popover text-popover-foreground border border-border shadow-xl rounded-xl p-4 flex gap-4 z-50 animate-in fade-in zoom-in-95 duration-200 min-w-[200px]">
+
+                    {/* Hours Column */}
+                    <div className="flex-1">
+                      <span className="text-xs font-bold text-muted-foreground mb-2 block uppercase text-center">Hora</span>
+                      <div className="h-48 overflow-y-auto space-y-1 scrollbar-thin scrollbar-thumb-secondary pr-2">
+                        {hours.map(h => (
+                          <button
+                            key={h}
+                            onClick={() => handleTimeSelect('hour', h)}
+                            className={`w-full py-1.5 rounded-md text-sm font-medium transition-colors ${autopilotTime.startsWith(h)
+                              ? 'bg-primary text-primary-foreground'
+                              : 'hover:bg-secondary'
+                              }`}
+                          >
+                            {h}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div className="w-[1px] bg-border my-2" />
+
+                    {/* Minutes Column */}
+                    <div className="flex-1">
+                      <span className="text-xs font-bold text-muted-foreground mb-2 block uppercase text-center">Min</span>
+                      <div className="h-48 overflow-y-auto space-y-1 scrollbar-thin scrollbar-thumb-secondary">
+                        {minutes.map(m => (
+                          <button
+                            key={m}
+                            onClick={() => handleTimeSelect('minute', m)}
+                            className={`w-full py-1.5 rounded-md text-sm font-medium transition-colors ${autopilotTime.endsWith(m)
+                              ? 'bg-primary text-primary-foreground'
+                              : 'hover:bg-secondary'
+                              }`}
+                          >
+                            {m}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
             </div>
-          </div>
 
-          {/* Backdrop to close picker */}
-          {showTimePicker && (
-            <div
-              className="fixed inset-0 z-0 bg-transparent"
-              onClick={() => setShowTimePicker(false)}
-            />
-          )}
-
-          {/* Scheduler Quantity Selector */}
-          <div className={`mt-8 w-full max-w-[200px] transition-all duration-300 ${autopilotEnabled ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4 pointer-events-none'}`}>
-            <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider block mb-2">
-              Leads por día
-            </label>
-            <div className="flex items-center gap-2 bg-secondary/30 p-1.5 rounded-lg border border-border/50">
-              <input
-                type="range"
-                min="5"
-                max="50"
-                step="5"
-                value={autopilotQuantity}
-                onChange={(e) => onAutopilotQuantityChange(parseInt(e.target.value))}
-                className="w-full h-1.5 bg-secondary rounded-lg appearance-none cursor-pointer accent-green-500 hover:accent-green-600 transition-all"
+            {/* Backdrop to close picker */}
+            {showTimePicker && (
+              <div
+                className="fixed inset-0 z-0 bg-transparent"
+                onClick={() => setShowTimePicker(false)}
               />
-              <span className="font-mono text-sm font-bold w-6 text-center">{autopilotQuantity}</span>
+            )}
+
+            {/* Scheduler Quantity Selector */}
+            <div className={`mt-8 w-full max-w-[200px] transition-all duration-300 ${autopilotEnabled ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4 pointer-events-none'}`}>
+              <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider block mb-2">
+                Leads por día
+              </label>
+              <div className="flex items-center gap-2 bg-secondary/30 p-1.5 rounded-lg border border-border/50">
+                <input
+                  type="range"
+                  min="5"
+                  max="50"
+                  step="5"
+                  value={autopilotQuantity}
+                  onChange={(e) => onAutopilotQuantityChange(parseInt(e.target.value))}
+                  className="w-full h-1.5 bg-secondary rounded-lg appearance-none cursor-pointer accent-green-500 hover:accent-green-600 transition-all"
+                />
+                <span className="font-mono text-sm font-bold w-6 text-center">{autopilotQuantity}</span>
+              </div>
             </div>
+          </div>
+
+          <div className="mt-8 flex items-center justify-between pt-6 border-t border-border relative z-0">
+            <span className="text-sm font-medium text-muted-foreground">Estado del Sistema</span>
+            <button
+              onClick={() => onAutopilotToggle(!autopilotEnabled)}
+              className={`relative inline-flex h-7 w-12 items-center rounded-full transition-all focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 ${autopilotEnabled ? 'bg-green-500 shadow-[0_0_15px_-3px_rgba(34,197,94,0.6)]' : 'bg-secondary'
+                }`}
+            >
+              <span
+                className={`${autopilotEnabled ? 'translate-x-6' : 'translate-x-1'
+                  } inline-block h-5 w-5 transform rounded-full bg-white shadow-md transition-transform`}
+              />
+            </button>
           </div>
         </div>
 
-        <div className="mt-8 flex items-center justify-between pt-6 border-t border-border relative z-0">
-          <span className="text-sm font-medium text-muted-foreground">Estado del Sistema</span>
-          <button
-            onClick={() => onAutopilotToggle(!autopilotEnabled)}
-            className={`relative inline-flex h-7 w-12 items-center rounded-full transition-all focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 ${autopilotEnabled ? 'bg-green-500 shadow-[0_0_15px_-3px_rgba(34,197,94,0.6)]' : 'bg-secondary'
-              }`}
-          >
-            <span
-              className={`${autopilotEnabled ? 'translate-x-6' : 'translate-x-1'
-                } inline-block h-5 w-5 transform rounded-full bg-white shadow-md transition-transform`}
-            />
-          </button>
-        </div>
       </div>
-
     </div>
   );
 }

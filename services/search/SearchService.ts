@@ -22,7 +22,7 @@ export class SearchService {
     // ═══════════════════════════════════════════════════════════════════════════
     // SMART QUERY INTERPRETER
     // ═══════════════════════════════════════════════════════════════════════════
-    private async interpretQuery(userQuery: string, platform: 'gmail' | 'linkedin'): Promise<{
+    private async interpretQuery(userQuery: string, platform: 'gmail' | 'linkedin' | 'instagram'): Promise<{
         searchQuery: string;
         industry: string;
         targetRoles: string[];
@@ -857,7 +857,7 @@ Genera el mensaje.`
         onLog(`[GMAIL] 📊 Búsqueda completada: ${validLeads.length}/${targetCount} en ${attempts} intentos...`);
 
         // STAGE 3: Quick AI analysis
-        if (this.openaiKey && this.isRunning) {
+        if (this.isRunning) {
             const leadsToAnalyze = validLeads.slice(0, targetCount);
 
             for (let i = 0; i < leadsToAnalyze.length && this.isRunning; i++) {
@@ -932,8 +932,12 @@ Genera el mensaje.`
 
             onLog(`[LINKEDIN-ATTEMPT ${attempts}] 🔄 Página ${currentPage}: ${resultsToFetch} resultados...`);
 
-            const roleTerms = interpreted.targetRoles.slice(0, 2).join(' OR ');
-            const activeQuery = `site:linkedin.com/in ${roleTerms} "${interpreted.industry}" "${interpreted.location}"`;
+            // Rely solely on the user configuration
+            let activeQuery = config.query;
+            if (config.advancedFilters) {
+                activeQuery = this.buildQueryWithAdvancedFilters(activeQuery, config.advancedFilters);
+            }
+            activeQuery = `site:linkedin.com/in ${activeQuery}`;
 
             try {
                 const searchResults = await this.callApifyActor(GOOGLE_SEARCH_SCRAPER, {

@@ -23,7 +23,7 @@ function App() {
 
   // Search State
   const [config, setConfig] = useState<SearchConfigState>({
-    query: PROJECT_CONFIG.targets.icp,
+    query: "",
     source: 'linkedin',
     mode: 'fast',
     maxResults: 1
@@ -502,8 +502,8 @@ function App() {
   };
 
   const handleSaveCriteria = (newQuery: string, filters?: any) => {
-    setConfig(prev => ({ 
-      ...prev, 
+    setConfig(prev => ({
+      ...prev,
       query: newQuery,
       advancedFilters: filters
     }));

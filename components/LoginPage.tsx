@@ -8,6 +8,7 @@ interface LoginPageProps {
 }
 
 export function LoginPage({ onLogin }: LoginPageProps) {
+  const [isRegistering, setIsRegistering] = useState(false);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -19,18 +20,26 @@ export function LoginPage({ onLogin }: LoginPageProps) {
     setError('');
 
     try {
-      const { error } = await supabase.auth.signInWithPassword({
-        email,
-        password,
-      });
+      if (isRegistering) {
+        const { error } = await supabase.auth.signUp({
+          email,
+          password,
+        });
+        if (error) throw error;
+        // Proceed implicitly if signup succeeds depending on Auth settings, or maybe auto-login
+        onLogin();
+      } else {
+        const { error } = await supabase.auth.signInWithPassword({
+          email,
+          password,
+        });
 
-      if (error) throw error;
-
-      // If success, parent will handle navigation
-      onLogin();
+        if (error) throw error;
+        onLogin();
+      }
     } catch (err: any) {
       console.error(err);
-      setError(err.message || 'Error al iniciar sesión. Verifica tus credenciales.');
+      setError(err.message || (isRegistering ? 'Error al crear cuenta. Verifica tus datos.' : 'Error al iniciar sesión. Verifica tus credenciales.'));
     } finally {
       setLoading(false);
     }
@@ -104,11 +113,23 @@ export function LoginPage({ onLogin }: LoginPageProps) {
                 <div className="w-5 h-5 border-2 border-current border-t-transparent rounded-full animate-spin" />
               ) : (
                 <>
-                  Iniciar Sesión <ArrowRight className="ml-2 w-4 h-4" />
+                  {isRegistering ? 'Crear Cuenta' : 'Iniciar Sesión'} <ArrowRight className="ml-2 w-4 h-4" />
                 </>
               )}
             </button>
           </form>
+
+          <div className="mt-6 text-center text-sm">
+            <button
+              onClick={() => {
+                setIsRegistering(!isRegistering);
+                setError('');
+              }}
+              className="text-primary hover:underline"
+            >
+              {isRegistering ? '¿Ya tienes una cuenta? Iniciar Sesión' : '¿No tienes cuenta? Regístrate'}
+            </button>
+          </div>
 
           <div className="mt-6 text-center text-xs text-muted-foreground">
             <span className="opacity-70">Protegido con SSL y Encriptación de Extremo a Extremo</span>

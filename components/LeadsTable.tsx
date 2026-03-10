@@ -5,6 +5,8 @@ import { User, Mail, ExternalLink, Sparkles, Linkedin, MessageSquare } from 'luc
 interface LeadsTableProps {
   leads: Lead[];
   onViewMessage: (lead: Lead) => void;
+  onMarkContacted?: (lead: Lead) => void;
+  onMarkDiscarded?: (lead: Lead) => void;
 }
 
 const exportToCSV = (leads: Lead[]) => {
