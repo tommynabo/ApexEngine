@@ -56,8 +56,7 @@ export function LoginPage({ onLogin }: LoginPageProps) {
           <div className="inline-flex items-center justify-center w-12 h-12 rounded-xl bg-primary/20 border border-primary/30 mb-4">
             <Activity className="w-6 h-6 text-primary" />
           </div>
-          <h1 className="text-3xl font-bold tracking-tight">{PROJECT_CONFIG.clientName}</h1>
-          <p className="text-muted-foreground">Sistema de Acceso Seguro</p>
+          <h1 className="text-3xl font-bold tracking-tight">Apex Engine</h1>
         </div>
 
         <div className="bg-card border border-border rounded-xl p-8 shadow-2xl">
@@ -131,9 +130,6 @@ export function LoginPage({ onLogin }: LoginPageProps) {
             </button>
           </div>
 
-          <div className="mt-6 text-center text-xs text-muted-foreground">
-            <span className="opacity-70">Protegido con SSL y Encriptación de Extremo a Extremo</span>
-          </div>
         </div>
       </div>
     </div>

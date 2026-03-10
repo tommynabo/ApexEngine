@@ -2,7 +2,7 @@ import { ProjectConfig } from '../lib/types';
 
 export const PROJECT_CONFIG: ProjectConfig = {
     clientId: 'marco_inmobiliarias_2025',
-    clientName: 'Marcos - Inmobiliarias España',
+    clientName: 'Apex Engine',
     primaryColor: 'hsl(210, 100%, 50%)', // Dark blue for official look
     targets: {
         icp: 'Dueños y Directivos de Inmobiliarias (CEO, Fundador, Socio)',
@@ -18,7 +18,7 @@ export const PROJECT_CONFIG: ProjectConfig = {
         targetIndustries: ['Real Estate', 'Servicios Inmobiliarios'],
         companySizes: ['1-10', '11-50', '51-200'],
         requiredTitles: [
-            'CEO', 'Fundador', 'Socio Fundador', 'Owner', 
+            'CEO', 'Fundador', 'Socio Fundador', 'Owner',
             'Propietario', 'Director General', 'Gerente', 'Managing Director'
         ],
         excludeTitles: [
