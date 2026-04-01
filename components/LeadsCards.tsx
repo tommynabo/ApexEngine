@@ -92,7 +92,7 @@ export function LeadsCards({ leads, onMarkContacted, onMarkDiscarded }: LeadsCar
           {activeLead.messageA && (
             <div className="bg-secondary/40 border border-border/50 rounded-lg p-4">
               <div className="flex items-center justify-between mb-3">
-                <h3 className="font-semibold text-sm text-foreground">Mensaje A - Automatización</h3>
+                <h3 className="font-semibold text-sm text-foreground">Mensaje Personalizado</h3>
                 <button
                   onClick={() => handleCopyMessage(activeLead.messageA!, activeLead.id)}
                   className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${

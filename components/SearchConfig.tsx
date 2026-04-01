@@ -165,7 +165,7 @@ export function SearchConfig({
             <div>
               <p className="text-sm font-bold text-zinc-200 mb-1">Criterio de Búsqueda</p>
               <p className="text-xs text-zinc-500 leading-relaxed">
-                Haz clic en <span className="text-zinc-300">"Criterio de Búsqueda"</span> para definir exactamente qué perfiles quieres encontrar. Usa palabras clave como "Empresario", "CEO" o "Inmobiliaria".
+                Haz clic en <span className="text-zinc-300">"Criterio de Búsqueda"</span> para definir exactamente qué perfiles quieres encontrar. Usa palabras clave como "Empresario", "CEO" o "Agencias de Marketing B2B".
               </p>
             </div>
           </div>

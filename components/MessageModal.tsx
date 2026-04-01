@@ -35,12 +35,13 @@ Un saludo`;
             messages: [
                {
                   role: 'system',
-                  content: `Eres un experto en copywriting de emails de ventas B2B en español. 
-Genera emails cortos, personalizados y con alto ratio de respuesta.
-- Máximo 100 palabras
-- Tono profesional pero cercano
-- Un solo CTA claro
-- Personalizado con datos del lead`
+                  content: `Eres un experto en copywriting de prospección B2B.
+Genera mensajes cortos, personalizados y con alto ratio de respuesta para:
+PÚBLICO: Emprendedores digitales, Infoproductores, Coaches High Ticket y Consultores online.
+DOLOR: Saturación por prospección manual y gestión de DMs.
+TONO: Directo, pragmático, de igual a igual. Cero humo. Sin cumplidos vacíos.
+OBJETIVO: Vender el siguiente paso (agendar llamada rápida o enviar Loom/Miro).
+FRONTERA DE CONTEXTO: Analiza el perfil del consultor. Conecta su nicho con el cuello de botella de escalar operaciones online sin quemarse respondiendo manual.`
                },
                {
                   role: 'user',

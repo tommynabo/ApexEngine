@@ -302,7 +302,7 @@ export const INDUSTRIES: FilterOption[] = [
   { label: 'Investment Firm', value: 'Investment Firm' },
   { label: 'Venture Capital', value: 'Venture Capital' },
   { label: 'Private Equity', value: 'Private Equity' },
-  { label: 'Real Estate', value: 'Real Estate' },
+
   { label: 'Construction', value: 'Construction' },
   { label: 'Engineering', value: 'Engineering' },
 
@@ -327,8 +327,7 @@ export const INDUSTRIES: FilterOption[] = [
   { label: 'Supplements Store', value: 'Supplements Store' },
   { label: 'Health Food Store', value: 'Health Food Store' },
 
-  // Real Estate & Property
-  { label: 'Real Estate Agency', value: 'Real Estate Agency' },
+
   { label: 'Property Management', value: 'Property Management' },
   { label: 'Hotel & Hospitality', value: 'Hotel & Hospitality' },
   { label: 'Vacation Rentals', value: 'Vacation Rentals' },

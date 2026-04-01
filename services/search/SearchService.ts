@@ -243,12 +243,13 @@ ${researchData || 'Sin datos adicionales'}
                         messages: [
                             {
                                 role: 'system',
-                                content: `Eres un GENIO del análisis de negocios y psicología empresarial. Tu trabajo es hacer el análisis MÁS COMPLETO posible de cada lead para ventas B2B.
+                                content: `Eres un experto en de prospección B2B. Tu trabajo es analizar leads para enviarles cold outreach.
+PÚBLICO OBJETIVO: Emprendedores digitales, Infoproductores, Coaches High Ticket, Consultores online (SEO, Nutrición, etc.) y Dueños de Comunidades. Tienen negocios 100% online rentables, pero están saturados por el trabajo manual de prospección, DMs y gestión de leads.
+OBJETIVO: Vender el siguiente paso (agendar llamada rápida o enviar un vídeo Loom/Miro de demostración). NUNCA vender el servicio en el primer impacto.
+TONO (REGLA DE ORO): Directo, pragmático, de igual a igual. Cero humo. Nada de cumplidos vacíos. Lenguaje de negocios digitales.
 
-SI HAY DATOS DE "ACTIVIDAD RECIENTE (Posts)":
-- Analiza su estilo de escritura (Directo, Reflexivo, Técnico, Vendedor).
-- Deduce sus valores y qué temas le obsesionan ahora mismo.
-- Úsalo para personalizar el mensaje al máximo.
+FRONTERA DE CONTEXTO: Analiza el perfil del creador/consultor y el tipo de servicio o comunidad que ofrece. Redacta una línea de apertura que conecte su nicho específico (ej. consultoría SEO, coaching de nutrición, comunidad de inversores) con el cuello de botella de escalar operaciones online sin quemarse respondiendo mensajes manuales. No repitas su titular. Demuestra que entiendes cómo funciona su modelo de negocio digital.
+Variables a ingerir para la personalización: Años en el puesto/empresa, sector específico, hitos recientes.
 
 DEBES generar exactamente este JSON (sin markdown, solo JSON puro):
 {
@@ -256,7 +257,7 @@ DEBES generar exactamente este JSON (sin markdown, solo JSON puro):
   "businessMoment": "Deduce en qué fase está la empresa (Ej: 'Expansión agresiva', 'Consolidación', 'Buscando eficiencia')",
   "salesAngle": "El argumento ÚNICO para venderle a ESTA persona hoy.",
   "bottleneck": "Una frase BRUTAL y específica sobre su mayor freno o cuello de botella detectado.",
-  "personalizedMessage": "Mensaje de 100 palabras. Tono 'Coffee Chat' profesional. MENCIONA SU ÚLTIMO POST O ACTIVIDAD si existe."
+  "personalizedMessage": "El mensaje final aplicando todas las reglas anteriores."
 }
 
 IMPORTANTE: Responde SOLO con JSON válido.`
@@ -297,12 +298,12 @@ IMPORTANTE: Responde SOLO con JSON válido.`
 
         // Fallback genérico decente (sin "Sin API Key")
         return {
-            fullAnalysis: `${lead.companyName}: Agencia de bienes raíces activa en ${lead.location || 'España'}. Decisor influenciado por eficiencia operativa.`,
-            psychologicalProfile: `${lead.decisionMaker?.role || 'Propietario'} de inmobiliaria. Probablemente valora sistemas automatizados.`,
-            businessMoment: 'Expansión o consolidación',
-            salesAngle: 'Automatización de procesos y escalabilidad',
-            personalizedMessage: `Hola ${lead.decisionMaker?.name || 'equipo'}, he visto que gestionáis ${lead.companyName}. Tengo una oportunidad para automatizar vuestros procesos.`,
-            bottleneck: 'Gestión manual de leads y contactos limitando el crecimiento'
+            fullAnalysis: `${lead.companyName}: Negocio online/Consultoría activa en ${lead.location || 'Internet'}. Decisor saturado por gestión manual de leads.`,
+            psychologicalProfile: `${lead.decisionMaker?.role || 'Emprendedor'} digital. Valora su tiempo y busca escalar operaciones sin quemarse.`,
+            businessMoment: 'Buscando escalar sin caos manual',
+            salesAngle: 'Automatización de prospección y gestión de DMs',
+            personalizedMessage: `Hola ${lead.decisionMaker?.name || 'equipo'}, veo que estar respondiendo DMs manualmente frena tu capacidad de escalar. Te propongo un vídeo de Loom de 2 min mostrando cómo solucionarlo.`,
+            bottleneck: 'Saturación por prospección y contestación manual de mensajes'
         };
     }
 
@@ -334,13 +335,13 @@ IMPORTANTE: Responde SOLO con JSON válido.`
                     messages: [
                         {
                             role: 'system',
-                            content: `Eres un experto en mensajes de LinkedIn para inmobiliarias españolas. 
-Tu misión: Generar UN ÚNICO icebreaker corto (<25 palabras) enfocado en AUTOMATIZACIÓN de procesos.
+                            content: `Escribe un extracto de mensaje corto B2B outreach alineado con:
+PÚBLICO: Emprendedores digitales, Infoproductores, Coaches High Ticket, Consultores online y Dueños de Comunidades.
+DOLOR: Saturados por el trabajo manual de prospección, DMs y gestión de leads.
+EL OBJETIVO NO ES VENDER, es empujar a ver un Loom/Miro o agendar llamada rápida.
+TONO: Directo, pragmático, de igual a igual. Cero humo. Nada de cumplidos vacíos. Lenguaje de negocios digitales.
 
-El mensaje debe ser:
-- Directo y profesional
-- "Read-able" en 5 segundos
-- Centrado en eficiencia operativa y crecimiento
+CONTEXTO (FRONTERA): Analiza el perfil del creador/consultor y el tipo de servicio o comunidad que ofrece. Redacta una línea de apertura que conecte su nicho específico (ej. consultoría SEO, coaching de nutrición, comunidad de inversores) con el cuello de botella de escalar operaciones online sin quemarse respondiendo mensajes manuales. No repitas su titular. Demuestra que entiendes cómo funciona su modelo de negocio digital.
 
 Responde SOLO con JSON: {"messageA": "..."}`
                         },

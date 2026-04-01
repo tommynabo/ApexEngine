@@ -29,7 +29,7 @@ export function AgentTerminal({ logs, isVisible, isExpanded, onToggleExpand }: A
         <div className="flex items-center gap-2">
           <Terminal className="w-4 h-4 text-primary animate-pulse" />
           <span className="text-xs font-mono font-medium text-muted-foreground">
-            LEADOS_AGENT_V4.2 <span className="text-primary mx-2">●</span> EJECUCIÓN EN VIVO
+            APEX_ENGINE_V1.0 <span className="text-primary mx-2">●</span> EJECUCIÓN EN VIVO
           </span>
         </div>
         <button className="text-muted-foreground hover:text-foreground">

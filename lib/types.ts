@@ -2,7 +2,7 @@ export type PlatformSource = 'gmail' | 'linkedin' | 'instagram';
 export type SearchMode = 'fast' | 'deep';
 export type PageView = 'login' | 'dashboard' | 'campaigns';
 
-export interface ImmobiliariasConfig {
+export interface ApexEngineConfig {
   targetIndustries: string[];
   companySizes: string[];
   requiredTitles: string[];
@@ -25,7 +25,7 @@ export interface ProjectConfig {
     defaultDepth: number;
     defaultMode: SearchMode;
   };
-  immobiliariasConfig?: ImmobiliariasConfig;
+  apexEngineConfig?: ApexEngineConfig;
 }
 
 export interface Lead {
