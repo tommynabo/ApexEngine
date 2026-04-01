@@ -28,16 +28,11 @@ export function SearchConfig({
     if (val < 1) val = 1;
     if (val > 20) val = 20;
 
-    // Hard limit per limits
-    const maxAllowed = Math.max(0, 150 - totalLeadsGenerated);
-    if (val > maxAllowed) val = maxAllowed;
-
-    onChange({ maxResults: val });
     onChange({ maxResults: val });
   };
 
-  const isLimitReached = totalLeadsGenerated >= 150;
-  const maxAllowedInput = Math.max(1, Math.min(20, 150 - totalLeadsGenerated));
+  const isLimitReached = false;
+  const maxAllowedInput = 20; // Or whatever max they want per extraction
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
@@ -92,24 +87,7 @@ export function SearchConfig({
                 />
               </div>
 
-              {/* Progress Tracker */}
-              <div className="mt-4 bg-secondary/30 rounded-lg border border-border/50 p-3">
-                <div className="flex justify-between items-center mb-2">
-                  <span className="text-xs font-semibold text-foreground">Consumo Total</span>
-                  <span className={`text-xs font-mono ${isLimitReached ? 'text-destructive' : 'text-primary'}`}>
-                    {totalLeadsGenerated} / 150
-                  </span>
-                </div>
-                <div className="w-full h-2 bg-secondary rounded-full overflow-hidden">
-                  <div
-                    className={`h-full transition-all ${isLimitReached ? 'bg-destructive' : 'bg-primary'}`}
-                    style={{ width: `${Math.min(100, (totalLeadsGenerated / 150) * 100)}%` }}
-                  />
-                </div>
-                {isLimitReached && (
-                  <p className="text-xs text-destructive mt-2 font-medium">Has alcanzado el límite máximo permitido.</p>
-                )}
-              </div>
+              {/* Progress Tracker Removed */}
             </div>
           </div>
 
@@ -133,7 +111,8 @@ export function SearchConfig({
             ) : (
               <button
                 onClick={onSearch}
-                disabled={isLimitReached}
+                disabled={!config.query}
+                title={!config.query ? "Debe especificar un Criterio de Búsqueda primero" : ""}
                 className="w-full h-[48px] flex items-center justify-center rounded-lg font-bold text-sm transition-all shadow-lg shadow-primary/20 bg-primary text-primary-foreground hover:brightness-110 active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 <Play className="w-4 h-4 mr-2 fill-current" />
