@@ -102,7 +102,7 @@ export function SearchCriteriaModal({
                 <textarea
                   value={query}
                   onChange={(e) => setQuery(e.target.value)}
-                  placeholder='Ej: ("Gym" OR "Fitness") AND ("Dueño" OR "Fundador")'
+                  placeholder='Ej: ("Infoproductor" OR "Coach") AND ("Fundador" OR "CEO")'
                   className="w-full h-32 bg-zinc-800/50 border border-zinc-700 rounded-lg p-4 text-white placeholder-zinc-500 focus:border-blue-500 focus:outline-none transition-colors resize-none font-mono text-sm"
                 />
                 <p className="text-xs text-zinc-500 mt-2">
@@ -133,9 +133,9 @@ export function SearchCriteriaModal({
               <div className="bg-blue-500/10 border border-blue-500/20 rounded-lg p-4 space-y-2">
                 <h3 className="font-bold text-sm text-blue-300">Ejemplos de Consultas</h3>
                 <ul className="text-xs text-zinc-400 space-y-1 list-disc list-inside">
-                  <li><code className="text-blue-400">("Clínica de Salud" OR "Fitness") AND ("Dueño" OR "Fundador")</code></li>
-                  <li><code className="text-blue-400">"Yoga Studio" AND ("Propietario" OR "CEO")</code></li>
-                  <li><code className="text-blue-400">Gimnasio AND "Personal Trainer"</code></li>
+                  <li><code className="text-blue-400">("Infoproductor" OR "Coach High Ticket") AND ("CEO" OR "Fundador")</code></li>
+                  <li><code className="text-blue-400">"Agencia Marketing" AND ("Propietario" OR "Director")</code></li>
+                  <li><code className="text-blue-400">("Consultor SEO" OR "Mentor") AND España</code></li>
                 </ul>
               </div>
             </div>

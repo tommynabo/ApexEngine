@@ -22,7 +22,7 @@ function App() {
 
   // Search State
   const [config, setConfig] = useState<SearchConfigState>({
-    query: "",
+    query: '("Emprendedor digital" OR "Infoproductor" OR "Coach High Ticket" OR "Consultor" OR "Dueño") AND ("CEO" OR "Fundador" OR "Propietario")',
     source: 'linkedin',
     mode: 'fast',
     maxResults: 1
