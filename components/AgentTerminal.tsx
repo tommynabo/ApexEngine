@@ -48,13 +48,13 @@ export function AgentTerminal({ logs, isVisible, isExpanded, onToggleExpand }: A
             
             return (
               <div key={index} className="flex gap-3 opacity-0 animate-[fadeIn_0.3s_ease-out_forwards]">
-                <span className="text-muted-foreground min-w-[80px]">
+                <span className="text-white/50 min-w-[80px]">
                   {new Date().toLocaleTimeString('es-ES', { hour12: false, hour: "2-digit", minute: "2-digit", second: "2-digit" })}
                 </span>
                 <span className={
                   isError ? 'text-destructive' :
                   isSuccess ? 'text-green-400' :
-                  isSystem ? 'text-primary' : 'text-zinc-300'
+                  isSystem ? 'text-primary' : 'text-white'
                 }>
                   {log}
                 </span>

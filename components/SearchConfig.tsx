@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Play, Zap, Clock, Calendar } from 'lucide-react';
 import { SearchConfigState } from '../lib/types';
 import { PROJECT_CONFIG } from '../config/project';
+import { ICP_PRESETS } from '../lib/searchFilterData';
 
 interface SearchConfigProps {
   config: SearchConfigState;
@@ -35,7 +36,7 @@ export function SearchConfig({
   const maxAllowedInput = 20; // Or whatever max they want per extraction
 
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
+    <div className="grid grid-cols-1 gap-6 items-start">
       {/* 1. Generador de Leads */}
       <div className="bg-card border border-border rounded-xl p-6 shadow-sm flex flex-col relative overflow-hidden group hover:border-primary/20 transition-all h-full">
         <div className="absolute top-0 right-0 w-32 h-32 bg-primary/5 rounded-full blur-3xl -mr-16 -mt-16" />
@@ -92,13 +93,40 @@ export function SearchConfig({
           </div>
 
           <div className="mt-6 space-y-3">
-            <button
-              onClick={onOpenCriteria}
-              disabled={isSearching}
-              className="w-full h-[40px] flex items-center justify-center rounded-lg font-bold text-sm transition-all shadow-md bg-slate-200/50 text-slate-700 hover:bg-slate-200 dark:bg-slate-800/50 dark:text-slate-300 dark:hover:bg-slate-800 disabled:opacity-50"
-            >
-              ✎ Criterio de Búsqueda
-            </button>
+            {/* ICP Quick Presets */}
+            <div>
+              <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-2">⚡ Presets ICP</p>
+              <div className="grid grid-cols-2 gap-2">
+                {ICP_PRESETS.map((preset) => (
+                  <button
+                    key={preset.id}
+                    onClick={() =>
+                      onChange({
+                        query: preset.query,
+                        icp_type: preset.id,
+                        advancedFilters: {
+                          locations: [],
+                          jobTitles: preset.jobTitles,
+                          companySizes: [],
+                          industries: [],
+                          keywords: preset.keywords,
+                        },
+                      })
+                    }
+                    disabled={isSearching}
+                    title={preset.description}
+                    className={`flex items-center justify-center gap-1.5 rounded-lg text-xs font-bold py-2 px-3 transition-all border disabled:opacity-50 ${
+                      config.icp_type === preset.id
+                        ? 'bg-blue-500/20 border-blue-500 text-blue-300'
+                        : 'bg-secondary/40 border-border text-muted-foreground hover:border-primary/40 hover:text-foreground'
+                    }`}
+                  >
+                    <span>{preset.emoji}</span>
+                    <span>{preset.label}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
 
             {isSearching ? (
               <button
@@ -119,67 +147,6 @@ export function SearchConfig({
                 Generar Ahora
               </button>
             )}
-          </div>
-        </div>
-      </div>
-
-      {/* 2. Guía de Uso Rápida */}
-      <div className="bg-zinc-900/50 border border-zinc-800 rounded-xl p-6 shadow-sm flex flex-col h-full relative overflow-hidden">
-        <div className="absolute top-0 right-0 w-32 h-32 bg-primary/5 rounded-full blur-3xl -mr-16 -mt-16" />
-
-        <h3 className="text-lg font-bold text-white flex items-center gap-2 mb-6">
-          <div className="p-1.5 rounded-lg bg-blue-500/10">
-            <svg className="w-5 h-5 text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-            </svg>
-          </div>
-          Guía de Uso Rápida
-        </h3>
-
-        <div className="space-y-6 relative z-10">
-          <div className="flex gap-4 group">
-            <div className="flex-shrink-0 w-8 h-8 rounded-full bg-zinc-800 border border-zinc-700 flex items-center justify-center text-xs font-bold text-zinc-400 group-hover:bg-blue-500/20 group-hover:text-blue-400 group-hover:border-blue-500/30 transition-all">
-              1
-            </div>
-            <div>
-              <p className="text-sm font-bold text-zinc-200 mb-1">Criterio de Búsqueda</p>
-              <p className="text-xs text-zinc-500 leading-relaxed">
-                Haz clic en <span className="text-zinc-300">"Criterio de Búsqueda"</span> para definir exactamente qué perfiles quieres encontrar. Usa palabras clave como "Empresario", "CEO" o "Agencias de Marketing B2B".
-              </p>
-            </div>
-          </div>
-
-          <div className="flex gap-4 group">
-            <div className="flex-shrink-0 w-8 h-8 rounded-full bg-zinc-800 border border-zinc-700 flex items-center justify-center text-xs font-bold text-zinc-400 group-hover:bg-blue-500/20 group-hover:text-blue-400 group-hover:border-blue-500/30 transition-all">
-              2
-            </div>
-            <div>
-              <p className="text-sm font-bold text-zinc-200 mb-1">Ajustar Cantidad</p>
-              <p className="text-xs text-zinc-500 leading-relaxed">
-                Selecciona cuántos leads quieres extraer en esta sesión. Recuerda que el programa está limitado a un máximo de <span className="text-blue-400 font-bold">20 personas por búsqueda</span>.
-              </p>
-            </div>
-          </div>
-
-          <div className="flex gap-4 group">
-            <div className="flex-shrink-0 w-8 h-8 rounded-full bg-zinc-800 border border-zinc-700 flex items-center justify-center text-xs font-bold text-zinc-400 group-hover:bg-blue-500/20 group-hover:text-blue-400 group-hover:border-blue-500/30 transition-all">
-              3
-            </div>
-            <div>
-              <p className="text-sm font-bold text-zinc-200 mb-1">Generar y Analizar</p>
-              <p className="text-xs text-zinc-500 leading-relaxed">
-                Pulsa <span className="text-blue-400 font-bold">"Generar Ahora"</span>. El sistema encontrará los perfiles, analizará sus webs y diseñará un mensaje personalizado para cada uno automáticamente.
-              </p>
-            </div>
-          </div>
-        </div>
-
-        <div className="mt-auto pt-6">
-          <div className="p-4 rounded-lg bg-blue-500/5 border border-blue-500/10">
-            <p className="text-[10px] uppercase tracking-widest font-bold text-blue-400/60 mb-2">Consejo Premium</p>
-            <p className="text-xs text-zinc-400 italic">
-              "Para mejores resultados en LinkedIn, procura usar filtros de ubicación exactos en tu criterio de búsqueda."
-            </p>
           </div>
         </div>
       </div>
