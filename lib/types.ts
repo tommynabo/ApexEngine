@@ -58,6 +58,11 @@ export interface Lead {
   messageA?: string; // Automation-focused message
   isNPLPotential?: boolean;
   status: 'scraped' | 'enriched' | 'ready' | 'contacted' | 'replied' | 'discarded';
+  // ICP-specific fields
+  social_links?: Record<string, string>;
+  community_size?: number;
+  tech_stack?: string[];
+  icp_type?: 'agency' | 'skool_creator' | 'other';
 }
 
 export interface AdvancedFilter {
@@ -74,6 +79,7 @@ export interface SearchConfigState {
   mode: SearchMode;
   maxResults: number;
   advancedFilters?: AdvancedFilter;
+  icp_type?: 'agency' | 'skool_creator' | 'other';
 }
 
 export interface SearchSession {

@@ -7,7 +7,7 @@ interface SearchCriteriaModalProps {
   isOpen: boolean;
   onClose: () => void;
   currentQuery: string;
-  onSave: (newQuery: string, filters?: AdvancedFilter) => void;
+  onSave: (newQuery: string, filters?: AdvancedFilter, icp_type?: 'agency' | 'skool_creator' | 'other') => void;
 }
 
 export function SearchCriteriaModal({
@@ -18,11 +18,12 @@ export function SearchCriteriaModal({
 }: SearchCriteriaModalProps) {
   const [query, setQuery] = useState(currentQuery);
   const [filters, setFilters] = useState<AdvancedFilter | undefined>(undefined);
+  const [icpType, setIcpType] = useState<'agency' | 'skool_creator' | 'other' | undefined>(undefined);
   const [activeTab, setActiveTab] = useState<'simple' | 'advanced'>('advanced');
 
   const handleSave = () => {
     if (query.trim()) {
-      onSave(query, filters);
+      onSave(query, filters, icpType);
       onClose();
     }
   };
@@ -30,12 +31,14 @@ export function SearchCriteriaModal({
   const handleCancel = () => {
     setQuery(currentQuery);
     setFilters(undefined);
+    setIcpType(undefined);
     onClose();
   };
 
-  const handleAdvancedApply = (data: { query: string; filters: AdvancedFilter }) => {
+  const handleAdvancedApply = (data: { query: string; filters: AdvancedFilter; icp_type?: 'agency' | 'skool_creator' | 'other' }) => {
     setQuery(data.query);
     setFilters(data.filters);
+    setIcpType(data.icp_type);
     setActiveTab('simple');
   };
 

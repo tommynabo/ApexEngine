@@ -5,10 +5,8 @@ export type LogCallback = (message: string) => void;
 export type ResultCallback = (leads: Lead[]) => void;
 
 // Apify Actor IDs
-// Apify Actor IDs
-const GOOGLE_MAPS_SCRAPER = 'nwua9Gu5YrADL7ZDj';
 const CONTACT_SCRAPER = 'vdrmO1lXCkhbPjE9j';
-const GOOGLE_SEARCH_SCRAPER = 'nFJndFXA5zjCTuudP'; // ID for apify/google-search-scraper
+const GOOGLE_SEARCH_SCRAPER = 'nFJndFXA5zjCTuudP'; // apify/google-search-scraper
 
 export class SearchService {
     private isRunning = false;
@@ -215,20 +213,40 @@ Responde SOLO con JSON:
         bottleneck: string;
     }> {
         // Siempre intentar llamar /api/openai (no depender de this.openaiKey)
+        const socialLinksStr = lead.social_links && Object.keys(lead.social_links).length > 0
+            ? Object.entries(lead.social_links).map(([k, v]) => `${k}: ${v}`).join(' | ')
+            : 'No disponibles';
+
         const context = `
 ═══ DATOS DEL LEAD ═══
 Empresa: ${lead.companyName}
 Web: ${lead.website || 'No disponible'}
 Ubicación: ${lead.location || 'España'}
-Decisor: ${lead.decisionMaker?.name || 'No identificado'}
+Decisori: ${lead.decisionMaker?.name || 'No identificado'}
 Cargo: ${lead.decisionMaker?.role || 'Propietario'}
 Email: ${lead.decisionMaker?.email || 'No disponible'}
 LinkedIn: ${lead.decisionMaker?.linkedin || 'No disponible'}
+Redes sociales: ${socialLinksStr}
+Tipo ICP: ${lead.icp_type || 'other'}
 Resumen inicial: ${lead.aiAnalysis?.summary || ''}
 
 ═══ INVESTIGACIÓN ADICIONAL ═══
 ${researchData || 'Sin datos adicionales'}
         `.trim();
+
+        const icpScoringRules = lead.icp_type === 'skool_creator'
+            ? `
+REGLAS ICP — SKOOL CREATOR:
+- PUNTUÁ ALTO si la bio/resumen menciona: "comunidad", "alumnos", "transformación", "coach", "programa", "mentoring".
+- PENALIZA / DESCARTA si no hay enlaces a redes sociales ni oferta clara visible en el perfil.
+- salesAngle: enfoca el argumento en cómo escalar la captación de nuevos miembros a la comunidad sin saturarse respondiendo DMs uno a uno.`
+            : lead.icp_type === 'agency'
+            ? `
+REGLAS ICP — AGENCIA DE MARKETING:
+- PUNTUÁ ALTO a Fundadores (CEO, Founder, Director, Co-Founder) de agencias con servicios B2B medibles: growth, paid media, SEO, lead gen, performance marketing.
+- PENALIZA: freelancers individuales sin equipo, agencias de diseño gráfico básico, consultores genéricos sin oferta B2B clara.
+- salesAngle: muestra cómo automatizar la captación de nuevos clientes para la propia agencia, liberando al fundador de la prospección manual.`
+            : '';
 
         const MAX_RETRIES = 2;
         for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
@@ -251,7 +269,7 @@ TONO (REGLA DE ORO): Directo, pragmático, de igual a igual. Cero humo. Nada de 
 FRONTERA DE CONTEXTO: Analiza el perfil del creador/consultor y el tipo de servicio o comunidad que ofrece. Redacta una línea de apertura que conecte su nicho específico (ej. consultoría SEO, coaching de nutrición, comunidad de inversores) con el cuello de botella de escalar operaciones online sin quemarse respondiendo mensajes manuales. No repitas su titular. Demuestra que entiendes cómo funciona su modelo de negocio digital.
 Variables a ingerir para la personalización: Años en el puesto/empresa, sector específico, hitos recientes.
 IMPORTANTE: NUNCA incluyas la despedida "Un saludo", ni "[Tu Nombre]", "[Tu Empresa]", o "[Tu Teléfono]". El mensaje debe cortarse antes de la firma.
-
+${icpScoringRules}
 DEBES generar exactamente este JSON (sin markdown, solo JSON puro):
 {
   "psychologicalProfile": "Describe su perfil en 2 frases (Ej: 'Visionario y directo. Valora la innovación...')",
@@ -394,6 +412,159 @@ Genera el mensaje.`
         return {
             messageA: `Hola ${lead.decisionMaker?.name || 'equipo'}, veo que gestionáis ${lead.companyName}. Tengo una solución para automatizar vuestros procesos.`
         };
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // SKOOL SEARCH — Google Dorks targeting Skool community creators
+    // ═══════════════════════════════════════════════════════════════════════════
+    private async searchSkool(
+        config: SearchConfigState,
+        existingWebsites: Set<string>,
+        existingCompanyNames: Set<string>,
+        existingEmails: Set<string>,
+        existingLinkedinUrls: Set<string>,
+        onLog: LogCallback,
+        onComplete: ResultCallback
+    ) {
+        onLog(`[SKOOL] 🎓 Iniciando búsqueda Skool con Google Dorks...`);
+
+        const targetCount = Math.max(1, config.maxResults || 1);
+        const keywords = config.advancedFilters?.keywords?.join(' OR ') || 'coach mentor consultor comunidad';
+
+        const dorkQueries = [
+            `site:skool.com/communities`,
+            `(${keywords}) AND (comunidad OR alumnos OR transformación OR programa)`,
+            `(${keywords}) AND site:instagram.com (comunidad OR coach OR mentor)`,
+        ].join('\n');
+
+        onLog(`[SKOOL] 🔍 Queries: ${dorkQueries.substring(0, 100)}...`);
+
+        const validLeads: Lead[] = [];
+
+        try {
+            const searchResults = await this.callApifyActor(GOOGLE_SEARCH_SCRAPER, {
+                queries: dorkQueries,
+                maxPagesPerQuery: 1,
+                resultsPerPage: 20,
+                languageCode: 'es',
+                countryCode: 'es',
+            }, onLog);
+
+            onLog(`[SKOOL] 📊 Google retornó ${searchResults.length} resultados`);
+
+            for (const result of searchResults) {
+                if (!this.isRunning || validLeads.length >= targetCount) break;
+
+                const organicResults = result.organicResults || [];
+                for (const item of organicResults) {
+                    if (!this.isRunning || validLeads.length >= targetCount) break;
+
+                    const url: string = item.url || item.link || '';
+                    const title: string = item.title || '';
+                    const description: string = item.description || item.snippet || '';
+
+                    if (!url || !title) continue;
+
+                    // Extract social links from URL and description
+                    const social_links: Record<string, string> = {};
+                    if (url.includes('skool.com')) social_links['skool'] = url;
+                    if (url.includes('instagram.com')) social_links['instagram'] = url;
+                    if (url.includes('linkedin.com')) social_links['linkedin'] = url;
+
+                    const instagramMatch = description.match(/instagram\.com\/[\w.]+/);
+                    if (instagramMatch) social_links['instagram'] = `https://${instagramMatch[0]}`;
+                    const linkedinMatch = description.match(/linkedin\.com\/in\/[\w-]+/);
+                    if (linkedinMatch) social_links['linkedin'] = `https://${linkedinMatch[0]}`;
+
+                    // Build a clean company/creator name
+                    const companyName = title.replace(/ \| Skool.*$/, '').replace(/ - .*$/, '').trim() || 'Comunidad Skool';
+
+                    // Deduplicate
+                    const cleanName = companyName.toLowerCase();
+                    if (existingCompanyNames.has(cleanName)) continue;
+                    if (validLeads.some(v => v.companyName.toLowerCase() === cleanName)) continue;
+
+                    const lead: Lead = {
+                        id: `skool-${Date.now()}-${validLeads.length}`,
+                        source: 'instagram' as const,
+                        companyName,
+                        website: url,
+                        location: '',
+                        icp_type: 'skool_creator',
+                        social_links,
+                        decisionMaker: {
+                            name: '',
+                            role: 'Fundador / Coach',
+                            email: '',
+                            phone: '',
+                            linkedin: social_links['linkedin'] || '',
+                            instagram: social_links['instagram'] || '',
+                        },
+                        aiAnalysis: {
+                            summary: description.substring(0, 200),
+                            painPoints: [],
+                            generatedIcebreaker: '',
+                            fullMessage: '',
+                            fullAnalysis: '',
+                            psychologicalProfile: '',
+                            businessMoment: '',
+                            salesAngle: '',
+                        },
+                        status: 'scraped',
+                    };
+
+                    validLeads.push(lead);
+                    onLog(`[SKOOL] ✅ Lead: ${companyName}`);
+                }
+            }
+        } catch (e: any) {
+            onLog(`[SKOOL] ❌ Error en scraping: ${e.message}`);
+        }
+
+        if (validLeads.length === 0) {
+            onLog(`[SKOOL] ⚠️ No se encontraron leads Skool. Verifica la query o los filtros.`);
+            onComplete([]);
+            return;
+        }
+
+        // Enrich with AI analysis
+        onLog(`[SKOOL] 🧠 Analizando ${validLeads.length} leads con IA...`);
+        const enrichedLeads: Lead[] = [];
+
+        for (const lead of validLeads) {
+            if (!this.isRunning) break;
+
+            try {
+                const researchData = await this.deepResearchLead(lead, onLog);
+                const analysis = await this.generateUltraAnalysis(lead, researchData);
+                const { messageA } = await this.generateOneMessage(lead);
+
+                enrichedLeads.push({
+                    ...lead,
+                    messageA,
+                    status: 'enriched',
+                    aiAnalysis: {
+                        ...lead.aiAnalysis,
+                        fullAnalysis: analysis.fullAnalysis,
+                        psychologicalProfile: analysis.psychologicalProfile,
+                        businessMoment: analysis.businessMoment,
+                        salesAngle: analysis.salesAngle,
+                        fullMessage: analysis.personalizedMessage,
+                        generatedIcebreaker: analysis.personalizedMessage,
+                    },
+                });
+
+                onLog(`[SKOOL] ✨ Enriquecido: ${lead.companyName}`);
+                onComplete([...enrichedLeads]);
+            } catch (e: any) {
+                onLog(`[SKOOL] ⚠️ Error analizando ${lead.companyName}: ${e.message}`);
+                enrichedLeads.push(lead);
+                onComplete([...enrichedLeads]);
+            }
+        }
+
+        onLog(`[SKOOL] 🏁 Búsqueda completada: ${enrichedLeads.length} leads Skool encontrados.`);
+        onComplete(enrichedLeads);
     }
 
     private async callApifyActor(actorId: string, input: any, onLog: LogCallback): Promise<any[]> {
@@ -565,6 +736,23 @@ Genera el mensaje.`
                 await deduplicationService.fetchExistingLeads(this.userId);
             onLog(`[DEDUP] ✅ Pre-flight: ${existingWebsites.size} dominios, ${existingCompanyNames.size} empresas en historial`);
 
+            // ═══════════════════════════════════════════════════════════════════════════
+            // ICP ROUTING — Skool search uses Google Dorks instead of Maps/LinkedIn
+            // ═══════════════════════════════════════════════════════════════════════════
+            if (config.icp_type === 'skool_creator') {
+                onLog(`[ICP] 🎓 Modo Skool detectado — activando Google Dorks`);
+                await this.searchSkool(
+                    config,
+                    existingWebsites,
+                    existingCompanyNames,
+                    existingEmails,
+                    existingLinkedinUrls,
+                    onLog,
+                    onComplete
+                );
+                return;
+            }
+
             onLog(`[IA] 🧠 Interpretando: "${config.query}"...`);
             const interpreted = await this.interpretQuery(config.query, config.source);
             onLog(`[IA] ✅ Industria: ${interpreted.industry} | Roles: ${interpreted.targetRoles.join(', ')} | Zona: ${interpreted.location}`);
@@ -620,104 +808,96 @@ Genera el mensaje.`
         onComplete: ResultCallback
     ) {
         console.log('[GMAIL] 🚀 searchGmail iniciado');
-        onLog(`[GMAIL] 🚀 Iniciando búsqueda Gmail...`);
+        onLog(`[GMAIL] 🚀 Iniciando búsqueda Gmail (Google Search Dorks)...`);
 
         // Check Hard Limit
         let targetCount = config.maxResults;
         if (!targetCount || targetCount < 1) targetCount = 1;
-        // if (targetCount > 20) targetCount = 20; // Removed limit
 
-        let query = `${interpreted.searchQuery} ${interpreted.location}`;
+        // ── Email regex to harvest addresses directly from Google snippets ─────
+        const EMAIL_REGEX = /[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}/g;
 
-        // Apply advanced filters to query if available
-        if (config.advancedFilters) {
-            query = this.buildQueryWithAdvancedFilters(query, config.advancedFilters);
-            onLog(`[FILTERS] ✅ Filtros avanzados aplicados a la búsqueda`);
-        }
+        // ── ICP query variants — one call each (maxPagesPerQuery: 1) ──────────
+        // Rotating across attempts instead of paying for multi-page Apify runs.
+        // Targets social profiles where ICP (Agencias, Skool, Infoproductores)
+        // publishes their @gmail in the bio — directly visible in Google snippets.
+        const baseQuery = config.advancedFilters
+            ? this.buildQueryWithAdvancedFilters(interpreted.searchQuery, config.advancedFilters)
+            : interpreted.searchQuery;
 
-        onLog(`[GMAIL] 🗺️ Buscando: "${query}" (Smart Loop x4)...`);
-        console.log('[GMAIL] Query:', query);
+        const ICP_QUERY_VARIANTS: string[] = [
+            `(site:instagram.com OR site:twitter.com) ("agencia de marketing" OR "marketing digital") "@gmail.com" ${interpreted.location}`,
+            `(site:instagram.com OR site:twitter.com OR site:tiktok.com) ("skool" OR "comunidad online" OR "infoproductor") "@gmail.com"`,
+            `(site:instagram.com OR site:twitter.com) ("ayudo a" OR "coach" OR "consultor") "@gmail.com" ${interpreted.location}`,
+            `(site:instagram.com OR site:twitter.com OR site:tiktok.com) "${baseQuery}" "@gmail.com"`,
+            `site:instagram.com ("agencia" OR "fundador" OR "ceo") "@gmail.com" ${interpreted.location}`,
+            `site:twitter.com ("growth" OR "director" OR "fundador") ("agencia" OR "skool") "@gmail.com"`,
+            `(site:instagram.com OR site:tiktok.com) ("marketing digital" OR "skool" OR "comunidad") "@gmail.com"`,
+            `(site:instagram.com OR site:twitter.com) "${baseQuery}" ("founder" OR "ceo") "@gmail.com"`,
+        ];
 
         const validLeads: Lead[] = [];
         let attempts = 0;
-        const MAX_ATTEMPTS = 10;
-        let totalScannedPreviously = 0;
+        const MAX_ATTEMPTS = ICP_QUERY_VARIANTS.length;
 
         // ═══════════════════════════════════════════════════════════════════════════
-        // SMART LOOP: Keep iterating until target reached or no more results
+        // SMART LOOP: Rotate ICP query variants — fixed maxPagesPerQuery:1 per call
         // ═══════════════════════════════════════════════════════════════════════════
         while (validLeads.length < targetCount && this.isRunning && attempts < MAX_ATTEMPTS) {
+            const activeQuery = ICP_QUERY_VARIANTS[attempts];
             attempts++;
-            const needed = targetCount - validLeads.length;
-            const fetchAmount = needed * 4; // Smart multiplier x4
 
-            onLog(`[ATTEMPT ${attempts}] 🔄 Búsqueda: ${fetchAmount} candidatos (faltantes: ${needed})...`);
+            onLog(`[ATTEMPT ${attempts}] 🔍 Dork: "${activeQuery.substring(0, 90)}..."`);
 
-            // STAGE 1: Google Maps scraping with pagination
-            const totalMapsToScan = fetchAmount + totalScannedPreviously;
-
-            const mapsResults = await this.callApifyActor(GOOGLE_MAPS_SCRAPER, {
-                searchStringsArray: [query],
-                maxCrawledPlacesPerSearch: Math.min(totalMapsToScan, 1000),
-                language: 'es',
-                includeWebsiteEmail: true,
-                scrapeContacts: true,
-                maxImages: 0,
-                maxReviews: 0,
-            }, onLog);
-
-            onLog(`[DEBUG] 🔧 Apify retornó ${mapsResults.length} items (esperábamos ~${fetchAmount})...`);
-
-            if (mapsResults.length === 0) {
-                onLog(`[ATTEMPT ${attempts}] ⚠️ No se encontraron más resultados en Maps.`);
-                break; // No more results
+            // ── Single Google Search Scraper call — 1 page × 20 results ───────
+            let organicResults: any[] = [];
+            try {
+                const searchItems = await this.callApifyActor(GOOGLE_SEARCH_SCRAPER, {
+                    queries: activeQuery,
+                    maxPagesPerQuery: 1,
+                    resultsPerPage: 20,
+                    languageCode: 'es',
+                    countryCode: 'es',
+                }, onLog);
+                for (const item of searchItems) {
+                    if (item.organicResults) organicResults = organicResults.concat(item.organicResults);
+                }
+            } catch (e: any) {
+                onLog(`[ATTEMPT ${attempts}] ❌ Error en Google Search: ${e.message}`);
+                continue;
             }
+            onLog(`[ATTEMPT ${attempts}] 📄 ${organicResults.length} resultados orgánicos`);
+            if (organicResults.length === 0) continue;
 
-            onLog(`[DEBUG] 🗺️ Maps devolvió ${mapsResults.length} resultados...`);
+            // ── FAST ICP PRE-FILTER (client-side, zero cost) ──────────────────
+            const icpPassed = organicResults.filter((r: any) =>
+                this.fastICPFilter(r.title || '', r.description || '', 'gmail')
+            );
+            onLog(`[ICP] 🎯 ${icpPassed.length}/${organicResults.length} pasaron el filtro ICP`);
+            if (icpPassed.length === 0) continue;
 
-            // Analyze what Apify returned
-            const withWebsiteRaw = mapsResults.filter((r: any) => r.website).length;
-            const withEmailRaw = mapsResults.filter((r: any) => r.email || r.emails?.length).length;
-            onLog(`[DEBUG] 📊 ${withWebsiteRaw} con website, ${withEmailRaw} con email interno...`);
-
-            // Update pagination tracker
-            totalScannedPreviously += mapsResults.length;
-
-            // Convert to leads
-            let allLeads: Lead[] = mapsResults.map((item: any, index: number) => {
-                // Extract website - try multiple field names
-                let website = '';
-                if (item.website) {
-                    website = item.website.replace(/^https?:\/\//, '').replace(/\/$/, '').replace(/^www\./, '');
-                } else if (item.websiteUrl) {
-                    website = item.websiteUrl.replace(/^https?:\/\//, '').replace(/\/$/, '').replace(/^www\./, '');
-                }
-
-                // Extract email - try multiple field names
-                let email = '';
-                if (item.email) {
-                    email = item.email;
-                } else if (item.emails && Array.isArray(item.emails) && item.emails.length > 0) {
-                    email = item.emails[0];
-                }
-
+            // ── Build provisional Lead objects ────────────────────────────────
+            const allLeads: Lead[] = icpPassed.map((result: any, index: number) => {
+                const snippetEmails = (result.description || '').match(EMAIL_REGEX) || [];
+                const extractedEmail = snippetEmails.length > 0 ? snippetEmails[0] : '';
                 return {
-                    id: String(item.placeId || `lead-${Date.now()}-${attempts}-${index}`),
+                    id: `gmail-${Date.now()}-${attempts}-${index}`,
                     source: 'gmail' as const,
-                    companyName: item.title || item.name || 'Sin Nombre',
-                    website: website,
-                    location: item.address || item.fullAddress || '',
+                    companyName: result.title || 'Sin Nombre',
+                    website: '',
+                    socialUrl: result.url || '',
+                    location: interpreted.location,
                     decisionMaker: {
                         name: '',
-                        role: 'Propietario',
-                        email: email,
-                        phone: item.phone || (item.phones?.[0]) || '',
+                        role: 'Decisor',
+                        email: extractedEmail,
+                        phone: '',
                         linkedin: '',
-                        facebook: item.facebook || '',
-                        instagram: item.instagram || '',
+                        facebook: '',
+                        instagram: result.url?.includes('instagram.com') ? result.url : '',
                     },
                     aiAnalysis: {
-                        summary: `${item.categoryName || interpreted.industry} - ${item.reviewsCount || 0} reseñas (${item.totalScore || 'N/A'}⭐)`,
+                        summary: result.description || '',
                         painPoints: [],
                         generatedIcebreaker: '',
                         fullMessage: '',
@@ -730,158 +910,96 @@ Genera el mensaje.`
                 };
             });
 
-            // Filter deduplication from existing leads (catch new ones)
-            const newCandidates = allLeads.filter(lead => {
-                const cleanWeb = lead.website?.replace('www.', '').toLowerCase();
-                const cleanName = lead.companyName.toLowerCase();
+            // ── Session dedup ─────────────────────────────────────────────────
+            const sessionUnique = allLeads.filter(lead =>
+                !validLeads.some(v =>
+                    (v.socialUrl && v.socialUrl === lead.socialUrl) ||
+                    (v.decisionMaker?.email && lead.decisionMaker?.email &&
+                        v.decisionMaker.email === lead.decisionMaker.email)
+                )
+            );
+            const withEmailCount = sessionUnique.filter(l => l.decisionMaker?.email).length;
+            onLog(`[ATTEMPT ${attempts}] 📊 ${sessionUnique.length} únicos en sesión (${withEmailCount} con email del snippet)`);
+            if (sessionUnique.length === 0) continue;
 
-                // Check if already in validLeads from this session
-                const isSessionDuplicate = validLeads.some(v =>
-                    v.website === lead.website || v.companyName === lead.companyName
-                );
-
-                return !isSessionDuplicate;
-            });
-
-            const withWebsite = newCandidates.filter(l => l.website && l.website.length > 0).length;
-            const withEmail = newCandidates.filter(l => l.decisionMaker?.email).length;
-            onLog(`[ATTEMPT ${attempts}] 📊 Candidatos: ${newCandidates.length} total (${withWebsite} con website, ${withEmail} con email)`);
-
-            if (newCandidates.length === 0) {
-                onLog(`[ATTEMPT ${attempts}] ⚠️ Todos los candidatos ya procesados.`);
-                break;
-            }
-
-            onLog(`[ATTEMPT ${attempts}] ✨ ${newCandidates.length} candidatos únicos.`);
-            allLeads = newCandidates;
-
-            // STAGE 2: Aggressive Contact Enrichment
-            const needEmail = allLeads.filter(l => !l.decisionMaker?.email && l.website);
-            const alreadyHasEmail = allLeads.filter(l => l.decisionMaker?.email);
-
-            onLog(`[ATTEMPT ${attempts}] ℹ️ ${alreadyHasEmail.length} con email / ${needEmail.length} necesitan scraping...`);
-
+            // ── CONTACT SCRAPER — last resort for ICP Super Leads without email
+            const needEmail = sessionUnique.filter(l => !l.decisionMaker?.email && l.socialUrl);
             if (needEmail.length > 0 && this.isRunning) {
+                onLog(`[GMAIL] 🔎 Contact Scraper (last resort) para ${needEmail.length} Super Leads sin email...`);
                 const BATCH_SIZE = 10;
                 const batches = Math.ceil(needEmail.length / BATCH_SIZE);
-
                 for (let i = 0; i < batches && this.isRunning; i++) {
-                    const start = i * BATCH_SIZE;
-                    const end = start + BATCH_SIZE;
-                    const batch = needEmail.slice(start, end);
-
+                    const batch = needEmail.slice(i * BATCH_SIZE, (i + 1) * BATCH_SIZE);
                     try {
                         const contactResults = await this.callApifyActor(CONTACT_SCRAPER, {
-                            startUrls: batch.map(l => ({ url: `https://${l.website}` })),
-                            maxRequestsPerWebsite: 3,
-                            sameDomainOnly: true,
-                            maxCrawlingDepth: 1,
-                        }, (msg) => { });
-
+                            startUrls: batch.map(l => ({ url: l.socialUrl })),
+                            maxRequestsPerWebsite: 2,
+                            sameDomainOnly: false,
+                            maxCrawlingDepth: 0,
+                        }, () => { });
                         for (const contact of contactResults) {
                             const contactUrl = contact.url || '';
-                            const match = batch.find(l => {
-                                if (!l.website) return false;
-                                return contactUrl.includes(l.website.replace('www.', ''));
-                            });
-
+                            const match = batch.find(l =>
+                                l.socialUrl && contactUrl.includes(l.socialUrl.split('/').pop() || '')
+                            );
                             if (match && contact.emails?.length) {
                                 const validEmails = contact.emails.filter((e: string) =>
                                     !e.includes('sentry') && !e.includes('noreply') && !e.includes('wix') && e.includes('@')
                                 );
-
                                 if (validEmails.length > 0) {
-                                    match.decisionMaker.email = validEmails[0];
-                                    onLog(`[GMAIL] 📧 Email: ${validEmails[0]}`);
+                                    match.decisionMaker!.email = validEmails[0];
+                                    onLog(`[GMAIL] 📧 Email (last resort): ${validEmails[0]}`);
                                 }
                             }
                         }
                     } catch (e: any) {
-                        onLog(`[GMAIL] ⚠️ Lote ${i + 1} falló: ${e.message}`);
+                        onLog(`[GMAIL] ⚠️ Lote Contact Scraper ${i + 1} falló: ${e.message}`);
                     }
                 }
             }
 
-            // Filter leads with email (but allow leads without email as fallback)
-            const leadsWithEmail = allLeads.filter(l => l.decisionMaker?.email);
+            // ── GLOBAL DEDUP ─────────────────────────────────────────────────
             const slotsRemaining = targetCount - validLeads.length;
-
-            // Use leads with email, but if not enough, add leads without email
-            let finalCandidates = leadsWithEmail.slice(0, slotsRemaining);
-
-            if (finalCandidates.length < slotsRemaining && leadsWithEmail.length < allLeads.length) {
-                const leadsWithoutEmail = allLeads.filter(l => !l.decisionMaker?.email);
-                const slotsStillNeeded = slotsRemaining - finalCandidates.length;
-                finalCandidates = finalCandidates.concat(leadsWithoutEmail.slice(0, slotsStillNeeded));
-                onLog(`[ATTEMPT ${attempts}] ℹ️ Agregando ${leadsWithoutEmail.slice(0, slotsStillNeeded).length} leads sin email como fallback...`);
-            }
-
-            if (finalCandidates.length === 0) {
-                onLog(`[ATTEMPT ${attempts}] ⚠️ No hay candidatos disponibles después del scraping.`);
-                break; // Exit loop instead of continuing forever
-            }
-
-            onLog(`[ATTEMPT ${attempts}] 📊 ${leadsWithEmail.length} con email, ${finalCandidates.length - leadsWithEmail.length} sin email.`);
-
-            // ═══════════════════════════════════════════════════════════════════
-            // DEDUPLICACIÓN GLOBAL: Filtrar contra el historial del usuario
-            // ═══════════════════════════════════════════════════════════════════
-            onLog(`[DEDUP] 🎯 Filtrando ${finalCandidates.length} candidatos contra historial global...`);
-            const deduplicatedCandidates = deduplicationService.filterUniqueCandidates(
-                finalCandidates,
-                existingWebsites,
-                existingCompanyNames,
-                existingEmails,
-                existingLinkedinUrls
+            const toDedup = sessionUnique.slice(0, slotsRemaining);
+            onLog(`[DEDUP] 🎯 Filtrando ${toDedup.length} candidatos contra historial global...`);
+            const globalUnique = deduplicationService.filterUniqueCandidates(
+                toDedup, existingWebsites, existingCompanyNames, existingEmails, existingLinkedinUrls
             );
-
-            if (deduplicatedCandidates.length < finalCandidates.length) {
-                onLog(
-                    `[DEDUP] ⚠️ ${finalCandidates.length - deduplicatedCandidates.length} candidatos rechazados (ya en historial). ` +
-                    `Quedaron ${deduplicatedCandidates.length} nuevos.`
-                );
+            if (globalUnique.length < toDedup.length) {
+                onLog(`[DEDUP] ⚠️ ${toDedup.length - globalUnique.length} rechazados (historial). Quedan ${globalUnique.length} nuevos.`);
             }
+            if (globalUnique.length === 0) continue;
 
-            if (deduplicatedCandidates.length === 0) {
-                onLog(`[ATTEMPT ${attempts}] ℹ️ Todos los candidatos de este intento fueron rechazados por deduplicación.`);
-                continue; // Try next attempt to find fresh leads
-            }
-
-            // Add successful leads to collection (only those that passed global dedup)
-            const leadsToAdd = deduplicatedCandidates;
-
-            for (const lead of leadsToAdd) {
+            for (const lead of globalUnique) {
                 validLeads.push(lead);
                 onLog(`[SUCCESS] ✅ Lead ${validLeads.length}/${targetCount}: ${lead.companyName}`);
             }
         } // End Smart Loop
+        // ─────────────────── (old Maps/Contact Scraper code removed) ──────────
+        // eslint-disable-next-line @typescript-eslint/no-unused-vars
 
-        onLog(`[GMAIL] 📊 Búsqueda completada: ${validLeads.length}/${targetCount} en ${attempts} intentos...`);
+        onLog(`[GMAIL] 📊 Búsqueda completada: ${validLeads.length}/${targetCount} en ${attempts} intentos`);
 
-        // STAGE 3: Quick AI analysis
-        if (this.isRunning) {
+        // ── AI analysis — uses snippet stored in summary (no extra scraper) ───
+        if (this.isRunning && validLeads.length > 0) {
             const leadsToAnalyze = validLeads.slice(0, targetCount);
-
             const aiPromises = leadsToAnalyze.map(async (lead) => {
                 if (!this.isRunning) return;
-                lead.aiAnalysis.generatedIcebreaker = `Hola, he visto vuestra web ${lead.website}...`;
                 lead.status = 'ready';
-
                 try {
-                    const research = await this.deepResearchLead(lead, (m) => { });
-                    const analysis = await this.generateUltraAnalysis(lead, research);
+                    const researchDossier = `PERFIL: ${lead.companyName}\nFuente: ${lead.socialUrl || 'redes sociales'}\nBio/Snippet: ${lead.aiAnalysis.summary || 'N/A'}\nUbicación: ${lead.location}`;
+                    const analysis = await this.generateUltraAnalysis(lead, researchDossier);
                     lead.aiAnalysis.fullAnalysis = analysis.fullAnalysis;
                     lead.aiAnalysis.psychologicalProfile = analysis.psychologicalProfile;
                     lead.aiAnalysis.businessMoment = analysis.businessMoment;
                     lead.aiAnalysis.salesAngle = analysis.salesAngle;
                     lead.aiAnalysis.fullMessage = analysis.personalizedMessage;
+                    lead.aiAnalysis.generatedIcebreaker = analysis.bottleneck;
 
-                    // Generate Message A (Product-focused)
                     const messages = await this.generateOneMessage(lead);
                     lead.messageA = messages.messageA;
                 } catch (e) {
-                    lead.aiAnalysis.fullMessage = `Contacto disponible en ${lead.website}`;
-                    // Fallback message
+                    lead.aiAnalysis.fullMessage = `Contacto disponible: ${lead.socialUrl}`;
                     lead.messageA = `Hola ${lead.decisionMaker?.name || 'equipo'}, quisiera hablar sobre automatización.`;
                 }
             });
@@ -941,8 +1059,8 @@ Genera el mensaje.`
             try {
                 const searchResults = await this.callApifyActor(GOOGLE_SEARCH_SCRAPER, {
                     queries: activeQuery,
-                    maxPagesPerQuery: currentPage, // Paginate
-                    resultsPerPage: resultsToFetch,
+                    maxPagesPerQuery: 1,      // Hard cap — cheaper; iterate via query variation
+                    resultsPerPage: 20,       // Sufficient for one low-cost call
                     languageCode: 'es',
                     countryCode: 'es',
                 }, onLog);
@@ -966,9 +1084,16 @@ Genera el mensaje.`
                 }
 
                 // Transform raw profiles into provisional Leads
+                // FAST ICP PRE-FILTER applied here — discard before dedup + AI (zero cost)
                 const provisionalCandidates: Lead[] = [];
                 for (let i = 0; i < linkedInProfiles.length; i++) {
                     const profile = linkedInProfiles[i];
+
+                    // Kill non-ICP leads before spending any Apify credits or OpenAI tokens
+                    if (!this.fastICPFilter(profile.title || '', profile.description || '', 'linkedin')) {
+                        continue;
+                    }
+
                     const titleParts = (profile.title || '').split(' - ');
                     const name = titleParts[0]?.replace(' | LinkedIn', '').trim() || 'Usuario LinkedIn';
                     const role = this.extractRole(profile.title) || 'Decisor';
@@ -988,7 +1113,9 @@ Genera el mensaje.`
                             linkedin: profile.url
                         },
                         aiAnalysis: {
-                            summary: '',
+                            // Store Google snippet as research context — replaces POSTS_SCRAPER at zero cost.
+                            // Google snippet almost always contains the headline + initial bio.
+                            summary: profile.description || '',
                             fullAnalysis: '',
                             psychologicalProfile: '',
                             businessMoment: '',
@@ -1040,8 +1167,6 @@ Genera el mensaje.`
 
                 onLog(`[INFO] Procesando ${candidatesToProcess.length} leads únicos (saltando el resto para respetar target: ${targetCount}).`);
 
-                const POSTS_SCRAPER = 'LQQIXN9Othf8f7R5n';
-
                 const prevCount = validLeads.length;
                 const processCount = Math.min(candidatesToProcess.length, targetCount - prevCount);
                 if (processCount <= 0) break;
@@ -1053,21 +1178,10 @@ Genera el mensaje.`
 
                     onLog(`[RESEARCH] 🧠 Analizando: ${candidate.decisionMaker?.name}...`);
 
-                    let recentPostsText = "";
-                    try {
-                        const postsData = await this.callApifyActor(POSTS_SCRAPER, {
-                            username: candidate.decisionMaker?.linkedin,
-                            limit: 3
-                        }, () => { });
-
-                        if (postsData && postsData.length > 0) {
-                            recentPostsText = postsData.map((p: any) => `${p.text?.substring(0, 150)}...`).join('\n');
-                        }
-                    } catch (e) {
-                        // Silent - posts are optional
-                    }
-
-                    const researchDossier = `PERFIL: ${candidate.decisionMaker?.name}\nHeadline: ${candidate.decisionMaker?.role} en ${candidate.companyName}\nReciente: ${recentPostsText || "N/A"}`;
+                    // Use Google snippet (stored in aiAnalysis.summary during construction).
+                    // Replaces POSTS_SCRAPER — the snippet contains headline + bio at zero cost.
+                    const googleSnippet = candidate.aiAnalysis.summary || '';
+                    const researchDossier = `PERFIL: ${candidate.decisionMaker?.name}\nHeadline: ${candidate.decisionMaker?.role} en ${candidate.companyName}\nBio/Snippet: ${googleSnippet || 'N/A'}`;
 
                     try {
                         const analysis = await this.generateUltraAnalysis({
@@ -1135,6 +1249,24 @@ Genera el mensaje.`
         if (lower.includes('owner') || lower.includes('propietario')) return 'Propietario';
         if (lower.includes('director')) return 'Director';
         return '';
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // FAST ICP PRE-FILTER — Client-side regex gate, runs BEFORE dedup and AI
+    // Eliminates non-ICP leads without spending a single Apify credit or OpenAI token.
+    // Returns true  → lead matches ICP, proceed normally.
+    // Returns false → discard immediately, skip dedup + analysis.
+    // ═══════════════════════════════════════════════════════════════════════════
+    private fastICPFilter(title: string, description: string, _icpType: string): boolean {
+        const corpus = `${title} ${description}`.toLowerCase();
+
+        // ── Negative gate (hard stop) ──────────────────────────────────────────
+        const NEGATIVE_REGEX = /\b(junior|intern|estudiante|freelance|buscando nuevas oportunidades|profesor)\b/i;
+        if (NEGATIVE_REGEX.test(corpus)) return false;
+
+        // ── Positive gate (must match at least one) ────────────────────────────
+        const POSITIVE_REGEX = /\b(founder|ceo|director|agencia|marketing|skool|comunidad|ayudo a|growth)\b/i;
+        return POSITIVE_REGEX.test(corpus);
     }
 }
 

@@ -526,3 +526,40 @@ export const KEYWORDS: FilterOption[] = [
   { label: 'Dropshipping', value: 'Dropshipping' },
   { label: 'Affiliate Marketing', value: 'Affiliate Marketing' },
 ];
+
+// ═══════════════════════════════════════════════════════════════════════════
+// ICP PRESETS — Quick-launch configurations for the two primary target ICPs
+// ═══════════════════════════════════════════════════════════════════════════
+
+export interface IcpPreset {
+  id: 'skool_creator' | 'agency';
+  label: string;
+  emoji: string;
+  description: string;
+  keywords: string[];
+  jobTitles: string[];
+  query: string;
+}
+
+export const ICP_PRESETS: IcpPreset[] = [
+  {
+    id: 'skool_creator',
+    label: 'Comunidades Skool',
+    emoji: '🎓',
+    description: 'Coaches, mentores y creadores de comunidades en Skool',
+    keywords: ['skool', 'comunidad', 'coach', 'mentor', 'consultor'],
+    jobTitles: ['Coach', 'Mentor', 'Consultor', 'Founder', 'CEO'],
+    query:
+      'site:skool.com/communities OR (("coach" OR "mentor" OR "consultor") AND ("comunidad" OR "alumnos" OR "transformación" OR "programa"))',
+  },
+  {
+    id: 'agency',
+    label: 'Agencias de Marketing',
+    emoji: '📣',
+    description: 'Fundadores y directores de agencias de marketing digital B2B',
+    keywords: ['agencia', 'growth partner', 'marketing', 'ads', 'digital agency'],
+    jobTitles: ['CEO', 'Founder', 'Co-Founder', 'Director', 'Managing Director'],
+    query:
+      '("agencia de marketing" OR "growth partner" OR "digital agency" OR "marketing digital") AND ("CEO" OR "Founder" OR "Director" OR "Co-Founder")',
+  },
+];

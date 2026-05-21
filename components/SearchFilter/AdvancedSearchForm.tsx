@@ -1,11 +1,11 @@
 import React, { useState } from 'react';
 import { AutocompleteField } from './AutocompleteField';
-import { LOCATIONS, JOB_TITLES, COMPANY_SIZES, INDUSTRIES, KEYWORDS } from '../../lib/searchFilterData';
+import { LOCATIONS, JOB_TITLES, COMPANY_SIZES, INDUSTRIES, KEYWORDS, ICP_PRESETS, IcpPreset } from '../../lib/searchFilterData';
 import { AdvancedFilter } from '../../lib/types';
 import { MapPin, Briefcase, Building2, Layers, Sparkles } from 'lucide-react';
 
 interface AdvancedSearchFormProps {
-  onApply: (data: { query: string; filters: AdvancedFilter }) => void;
+  onApply: (data: { query: string; filters: AdvancedFilter; icp_type?: 'agency' | 'skool_creator' | 'other' }) => void;
   onCancel: () => void;
 }
 
@@ -15,6 +15,16 @@ export function AdvancedSearchForm({ onApply, onCancel }: AdvancedSearchFormProp
   const [companySizes, setCompanySizes] = useState<string[]>([]);
   const [industries, setIndustries] = useState<string[]>([]);
   const [keywords, setKeywords] = useState<string[]>([]);
+  const [selectedIcp, setSelectedIcp] = useState<IcpPreset['id'] | null>(null);
+
+  const applyPreset = (preset: IcpPreset) => {
+    setKeywords(preset.keywords);
+    setJobTitles(preset.jobTitles);
+    setLocations([]);
+    setCompanySizes([]);
+    setIndustries([]);
+    setSelectedIcp(preset.id);
+  };
 
   /**
    * Build Boolean Query from selected criteria
@@ -82,7 +92,8 @@ export function AdvancedSearchForm({ onApply, onCancel }: AdvancedSearchFormProp
           companySizes,
           industries,
           keywords
-        }
+        },
+        icp_type: selectedIcp ?? 'other'
       });
     }
   };
@@ -103,10 +114,32 @@ export function AdvancedSearchForm({ onApply, onCancel }: AdvancedSearchFormProp
     setCompanySizes([]);
     setIndustries([]);
     setKeywords([]);
+    setSelectedIcp(null);
   };
 
   return (
     <div className="space-y-6">
+      {/* ICP Presets */}
+      <div>
+        <p className="text-xs font-bold text-zinc-400 uppercase tracking-wider mb-3">⚡ Presets ICP</p>
+        <div className="grid grid-cols-2 gap-3">
+          {ICP_PRESETS.map((preset) => (
+            <button
+              key={preset.id}
+              onClick={() => applyPreset(preset)}
+              className={`flex flex-col items-start gap-1 px-4 py-3 rounded-xl border text-left transition-all ${
+                selectedIcp === preset.id
+                  ? 'bg-blue-500/20 border-blue-500 text-blue-300'
+                  : 'bg-zinc-800/60 border-zinc-700 text-zinc-300 hover:border-blue-500/50 hover:bg-zinc-800'
+              }`}
+            >
+              <span className="text-base font-bold">{preset.emoji} {preset.label}</span>
+              <span className="text-xs text-zinc-400 leading-snug">{preset.description}</span>
+            </button>
+          ))}
+        </div>
+      </div>
+
       {/* Title */}
       <div>
         <h3 className="text-lg font-bold text-white mb-1">Búsqueda Avanzada</h3>

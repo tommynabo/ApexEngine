@@ -363,11 +363,12 @@ function App() {
     setIsCriteriaModalOpen(true);
   };
 
-  const handleSaveCriteria = (newQuery: string, filters?: any) => {
+  const handleSaveCriteria = (newQuery: string, filters?: any, icp_type?: 'agency' | 'skool_creator' | 'other') => {
     setConfig(prev => ({
       ...prev,
       query: newQuery,
-      advancedFilters: filters
+      advancedFilters: filters,
+      icp_type: icp_type ?? prev.icp_type,
     }));
     setIsCriteriaModalOpen(false);
   };
