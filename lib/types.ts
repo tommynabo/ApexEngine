@@ -1,6 +1,6 @@
 export type PlatformSource = 'gmail' | 'linkedin' | 'instagram';
 export type SearchMode = 'fast' | 'deep';
-export type PageView = 'login' | 'dashboard' | 'campaigns' | 'linkedin';
+export type PageView = 'login' | 'dashboard' | 'campaigns';
 
 export interface ApexEngineConfig {
   targetIndustries: string[];
@@ -89,4 +89,5 @@ export interface SearchSession {
   source: PlatformSource;
   resultsCount: number;
   leads: Lead[];
+  icp_type?: 'agency' | 'skool_creator' | 'other';
 }

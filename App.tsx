@@ -8,7 +8,9 @@ import { MessageModal } from './components/MessageModal';
 import { LoginPage } from './components/LoginPage';
 import { CampaignsView } from './components/CampaignsView';
 import { HistoryModal } from './components/HistoryModal';
-import { LinkedInMainView } from './components/SistemaLinkedin/LinkedInMainView';
+import { CampaignHub } from './components/CampaignHub';
+import { CampaignWorkspace } from './components/CampaignWorkspace';
+import { ICP_PRESETS, IcpPreset } from './lib/searchFilterData';
 import { Lead, SearchConfigState, PageView, SearchSession } from './lib/types';
 import { PROJECT_CONFIG } from './config/project';
 import { searchService } from './services/search/SearchService';
@@ -41,8 +43,8 @@ function App() {
   const [selectedHistorySession, setSelectedHistorySession] = useState<SearchSession | null>(null);
   const [totalLeadsGenerated, setTotalLeadsGenerated] = useState(0);
 
-
-
+  // Campaign Navigation
+  const [activeCampaignId, setActiveCampaignId] = useState<'skool_creator' | 'agency' | null>(null);
 
   // Modal State
   const [isCriteriaModalOpen, setIsCriteriaModalOpen] = useState(false);
@@ -193,7 +195,8 @@ function App() {
               query: row.search_query || '',
               source: row.source as any || 'linkedin',
               resultsCount: leads.length || row.results_extracted || 0,
-              leads: leads
+              leads: leads,
+              icp_type: ICP_PRESETS.find(p => p.query === row.search_query)?.id,
             };
           })
         );
@@ -264,7 +267,8 @@ function App() {
           query: config.query,
           source: config.source,
           resultsCount: results.length,
-          leads: results
+          leads: results,
+          icp_type: config.icp_type,
         };
         setHistory(prev => [newSession, ...prev]);
         setTotalLeadsGenerated(prev => prev + results.length);
@@ -378,6 +382,25 @@ function App() {
     setSelectedHistorySession(session);
   };
 
+  const handleEnterCampaign = (preset: IcpPreset) => {
+    setActiveCampaignId(preset.id);
+    setLeads([]);
+    setLogs([]);
+    setTerminalVisible(false);
+    setConfig(prev => ({
+      ...prev,
+      query: preset.query,
+      icp_type: preset.id,
+      advancedFilters: {
+        locations: [],
+        jobTitles: preset.jobTitles,
+        companySizes: [],
+        industries: [],
+        keywords: preset.keywords,
+      }
+    }));
+  };
+
   // --- Views ---
 
   if (!isAuthenticated) {
@@ -397,33 +420,37 @@ function App() {
 
         {currentPage === 'dashboard' && (
           <div className="animate-[fadeIn_0.3s_ease-out]">
-            <div className="max-w-4xl mx-auto mb-10 text-center space-y-2">
-              <h1 className="text-3xl md:text-4xl font-bold tracking-tight">
-                Apex<span className="text-primary">Engine</span>
-              </h1>
-            </div>
-
-            <SearchConfig
-              config={config}
-              onChange={handleConfigChange}
-              onSearch={handleSearch}
-              onStop={handleStop}
-              isSearching={isSearching}
-              onOpenCriteria={handleOpenCriteria}
-              totalLeadsGenerated={totalLeadsGenerated}
-            />
-
-            <AgentTerminal
-              logs={logs}
-              isVisible={terminalVisible}
-              isExpanded={terminalExpanded}
-              onToggleExpand={() => setTerminalExpanded(!terminalExpanded)}
-            />
-
-            <LeadsTable
-              leads={leads}
-              onViewMessage={setSelectedLead}
-            />
+            {activeCampaignId === null ? (
+              <CampaignHub
+                history={history}
+                onEnterCampaign={handleEnterCampaign}
+              />
+            ) : (
+              <CampaignWorkspace
+                campaignId={activeCampaignId}
+                config={config}
+                onChange={handleConfigChange}
+                onSearch={handleSearch}
+                onStop={handleStop}
+                isSearching={isSearching}
+                logs={logs}
+                terminalVisible={terminalVisible}
+                terminalExpanded={terminalExpanded}
+                onToggleTerminal={() => setTerminalExpanded(!terminalExpanded)}
+                leads={leads}
+                history={history.filter(s => s.icp_type === activeCampaignId)}
+                onViewMessage={setSelectedLead}
+                onSelectSession={handleViewSessionResults}
+                onBack={() => {
+                  setActiveCampaignId(null);
+                  setLeads([]);
+                  setLogs([]);
+                  setTerminalVisible(false);
+                }}
+                onOpenCriteria={handleOpenCriteria}
+                totalLeadsGenerated={totalLeadsGenerated}
+              />
+            )}
           </div>
         )}
 
@@ -432,12 +459,6 @@ function App() {
             history={history}
             onSelectSession={handleViewSessionResults}
           />
-        )}
-
-        {currentPage === 'linkedin' && (
-          <div className="animate-[fadeIn_0.3s_ease-out]">
-            <LinkedInMainView history={history} />
-          </div>
         )}
 
       </main>
