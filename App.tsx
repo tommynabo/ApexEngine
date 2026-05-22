@@ -161,42 +161,44 @@ function App() {
               // Transform DB leads to Lead interface
               leads = leadsData.map(l => ({
                 id: l.id,
-                source: row.source as any || 'linkedin',
+                source: (l.source || row.source || 'linkedin') as any,
                 companyName: l.company_name || 'Sin Nombre',
-                website: l.company_website,
+                website: l.website,
                 location: l.location,
-                decisionMaker: {
-                  name: l.name,
-                  role: l.job_title || '',
-                  email: l.email || '',
-                  phone: l.phone,
-                  linkedin: l.linkedin_url,
-                  facebook: l.facebook_url,
-                  instagram: l.instagram_url
-                },
+                decisionMaker: l.decision_maker ? {
+                  name: l.decision_maker.name || '',
+                  role: l.decision_maker.role || '',
+                  email: l.decision_maker.email || '',
+                  phone: l.decision_maker.phone,
+                  linkedin: l.decision_maker.linkedin,
+                  facebook: l.decision_maker.facebook,
+                  instagram: l.decision_maker.instagram
+                } : undefined,
                 aiAnalysis: {
-                  summary: l.ai_summary || '',
-                  painPoints: l.ai_pain_points || [],
-                  generatedIcebreaker: '',
-                  fullMessage: '',
-                  fullAnalysis: l.ai_summary || '',
-                  psychologicalProfile: '',
-                  businessMoment: l.ai_business_moment || '',
-                  salesAngle: ''
+                  summary: l.ai_analysis?.summary || '',
+                  painPoints: l.ai_analysis?.painPoints || [],
+                  generatedIcebreaker: l.ai_analysis?.generatedIcebreaker || '',
+                  fullMessage: l.ai_analysis?.fullMessage || '',
+                  fullAnalysis: l.ai_analysis?.fullAnalysis || l.ai_analysis?.summary || '',
+                  psychologicalProfile: l.ai_analysis?.psychologicalProfile || '',
+                  businessMoment: l.ai_analysis?.businessMoment || '',
+                  salesAngle: l.ai_analysis?.salesAngle || ''
                 },
-                isNPLPotential: l.ai_is_npl_potential || false,
-                status: l.status as any || 'scraped'
+                messageA: l.message_a,
+                isNPLPotential: l.is_npl_potential || false,
+                status: (l.status || 'scraped') as any,
+                icp_type: l.icp_type as any
               }));
             }
 
             return {
               id: row.id,
               date: new Date(row.executed_at),
-              query: row.search_query || '',
-              source: row.source as any || 'linkedin',
-              resultsCount: leads.length || row.results_extracted || 0,
+              query: row.query || '',
+              source: (row.source || 'linkedin') as any,
+              resultsCount: leads.length || row.results_count || 0,
               leads: leads,
-              icp_type: ICP_PRESETS.find(p => p.query === row.search_query)?.id,
+              icp_type: (row.icp_type as any) || ICP_PRESETS.find(p => p.query === row.query)?.id,
             };
           })
         );
@@ -281,14 +283,13 @@ function App() {
               .from('search_history')
               .insert({
                 user_id: userId,
-                search_query: config.query,
+                query: config.query,
                 source: config.source,
                 mode: config.mode,
-                total_results: results.length,
-                results_extracted: results.length,
-                status: 'completed',
-                executed_at: new Date().toISOString(),
-                completed_at: new Date().toISOString()
+                max_results: config.maxResults,
+                results_count: results.length,
+                icp_type: config.icp_type || null,
+                executed_at: new Date().toISOString()
               })
               .select();
 
@@ -310,19 +311,33 @@ function App() {
             const leadsToInsert = results.map(lead => ({
               user_id: userId,
               search_id: searchId,
-              name: lead.decisionMaker?.name || lead.companyName || '',
+              source: lead.source || config.source,
               company_name: lead.companyName || '',
-              job_title: lead.decisionMaker?.role || '',
-              linkedin_url: lead.decisionMaker?.linkedin || '',
-              email: lead.decisionMaker?.email || '',
-              phone: lead.decisionMaker?.phone || '',
-              company_website: lead.website || '',
-              location: lead.location || '',
-              ai_summary: lead.aiAnalysis?.summary || '',
-              ai_pain_points: lead.aiAnalysis?.painPoints || [],
-              ai_business_moment: lead.aiAnalysis?.businessMoment || '',
-              ai_is_npl_potential: lead.isNPLPotential || false,
-              status: 'scraped'
+              website: lead.website || null,
+              location: lead.location || null,
+              decision_maker: lead.decisionMaker ? {
+                name: lead.decisionMaker.name,
+                role: lead.decisionMaker.role,
+                email: lead.decisionMaker.email,
+                phone: lead.decisionMaker.phone || null,
+                linkedin: lead.decisionMaker.linkedin || null,
+                facebook: lead.decisionMaker.facebook || null,
+                instagram: lead.decisionMaker.instagram || null
+              } : null,
+              ai_analysis: {
+                summary: lead.aiAnalysis?.summary || '',
+                painPoints: lead.aiAnalysis?.painPoints || [],
+                generatedIcebreaker: lead.aiAnalysis?.generatedIcebreaker || '',
+                fullMessage: lead.aiAnalysis?.fullMessage || '',
+                fullAnalysis: lead.aiAnalysis?.fullAnalysis || '',
+                psychologicalProfile: lead.aiAnalysis?.psychologicalProfile || '',
+                businessMoment: lead.aiAnalysis?.businessMoment || '',
+                salesAngle: lead.aiAnalysis?.salesAngle || ''
+              },
+              message_a: lead.messageA || null,
+              is_npl_potential: lead.isNPLPotential || false,
+              icp_type: lead.icp_type || config.icp_type || null,
+              status: lead.status || 'scraped'
             }));
 
             const { error: leadsError } = await supabase
