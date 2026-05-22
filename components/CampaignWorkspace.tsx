@@ -34,18 +34,21 @@ function escapeCSV(v: string | undefined): string {
 }
 
 function downloadCSV(sessions: SearchSession[], activeLeads: Lead[], filename: string) {
-  const headers = ['Nombre', 'Cargo', 'Empresa', 'LinkedIn', 'Email', 'Teléfono', 'Ubicación', 'Estado'];
+  const headers = ['Nombre', 'Apellido', 'Email', 'Cargo', 'Perfil de LinkedIn'];
   const allLeads = [...sessions.flatMap(s => s.leads), ...activeLeads];
-  const rows = allLeads.map(l => [
-    escapeCSV(l.decisionMaker?.name),
-    escapeCSV(l.decisionMaker?.role),
-    escapeCSV(l.companyName),
-    escapeCSV(l.decisionMaker?.linkedin),
-    escapeCSV(l.decisionMaker?.email),
-    escapeCSV(l.decisionMaker?.phone),
-    escapeCSV(l.location),
-    escapeCSV(l.status),
-  ].join(','));
+  const rows = allLeads.map(l => {
+    const fullName = (l.decisionMaker?.name ?? '').trim();
+    const spaceIdx = fullName.indexOf(' ');
+    const firstName = spaceIdx === -1 ? fullName : fullName.slice(0, spaceIdx);
+    const lastName = spaceIdx === -1 ? '' : fullName.slice(spaceIdx + 1);
+    return [
+      escapeCSV(firstName),
+      escapeCSV(lastName),
+      escapeCSV(l.decisionMaker?.email),
+      escapeCSV(l.decisionMaker?.role),
+      escapeCSV(l.decisionMaker?.linkedin || l.socialUrl || ''),
+    ].join(',');
+  });
   const csv = [headers.join(','), ...rows].join('\n');
   const blob = new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8;' });
   const url = URL.createObjectURL(blob);

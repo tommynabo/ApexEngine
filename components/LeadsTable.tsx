@@ -1,6 +1,6 @@
 import React from 'react';
 import { Lead } from '../lib/types';
-import { User, Mail, ExternalLink, Sparkles, Linkedin, MessageSquare } from 'lucide-react';
+import { User, Mail, ExternalLink, Linkedin, MessageSquare } from 'lucide-react';
 
 interface LeadsTableProps {
   leads: Lead[];
@@ -9,33 +9,27 @@ interface LeadsTableProps {
   onMarkDiscarded?: (lead: Lead) => void;
 }
 
+const escapeCSV = (value: string | undefined): string => {
+  if (!value) return '';
+  const escaped = value.replace(/"/g, '""').replace(/\n/g, ' ').replace(/\r/g, '');
+  return escaped.includes(',') || escaped.includes('"') ? `"${escaped}"` : escaped;
+};
+
 const exportToCSV = (leads: Lead[]) => {
-  const headers = ['Nombre', 'Apellido', 'Email', 'Cargo', 'Perfil LinkedIn', 'CUELLO DE BOTELLA', '🧠 PERFIL PSICOLÓGICO', '🏢 MOMENTO EMPRESARIAL', '💡 ÁNGULO DE VENTA', 'MENSAJE PERSONALIZADO'];
-  const escapeCSV = (value: string | undefined) => {
-    if (!value) return '';
-    const escaped = value.replace(/"/g, '""').replace(/\n/g, ' ').replace(/\r/g, '');
-    return escaped.includes(',') || escaped.includes('"')
-      ? `"${escaped}"`
-      : escaped;
-  };
+  const headers = ['Nombre', 'Apellido', 'Email', 'Cargo', 'Perfil de LinkedIn'];
 
   const rows = leads.map(l => {
-    const fullName = l.decisionMaker?.name || '';
-    const nameParts = fullName.trim().split(' ');
-    const firstName = nameParts[0] || '';
-    const lastName = nameParts.slice(1).join(' ') || '';
+    const fullName = (l.decisionMaker?.name ?? '').trim();
+    const spaceIdx = fullName.indexOf(' ');
+    const firstName = spaceIdx === -1 ? fullName : fullName.slice(0, spaceIdx);
+    const lastName = spaceIdx === -1 ? '' : fullName.slice(spaceIdx + 1);
 
     return [
       escapeCSV(firstName),
       escapeCSV(lastName),
       escapeCSV(l.decisionMaker?.email),
       escapeCSV(l.decisionMaker?.role),
-      escapeCSV(l.decisionMaker?.linkedin || ''),
-      escapeCSV(l.aiAnalysis?.generatedIcebreaker || 'Pendiente de detección'),
-      escapeCSV(l.aiAnalysis?.psychologicalProfile || 'Pendiente'),
-      escapeCSV(l.aiAnalysis?.businessMoment || 'Pendiente'),
-      escapeCSV(l.aiAnalysis?.salesAngle || 'Pendiente'),
-      escapeCSV(l.aiAnalysis?.fullMessage || 'Pendiente de generación')
+      escapeCSV(l.decisionMaker?.linkedin || l.socialUrl || '')
     ].join(',');
   });
 
@@ -44,7 +38,7 @@ const exportToCSV = (leads: Lead[]) => {
   const url = URL.createObjectURL(blob);
   const link = document.createElement('a');
   link.href = url;
-  link.download = `leads_ultra_${new Date().toISOString().slice(0, 10)}.csv`;
+  link.download = `leads_${new Date().toISOString().slice(0, 10)}.csv`;
   document.body.appendChild(link);
   link.click();
   document.body.removeChild(link);
@@ -75,10 +69,9 @@ export function LeadsTable({ leads, onViewMessage, onMarkContacted, onMarkDiscar
         <table className="w-full text-left border-collapse">
           <thead>
             <tr className="bg-secondary/30 text-xs text-muted-foreground uppercase tracking-wider border-b border-border">
-              <th className="px-6 py-4 font-medium w-[15%]">Empresa</th>
-              <th className="px-6 py-4 font-medium w-[15%]">Decisor</th>
-              <th className="px-6 py-4 font-medium w-[15%]">Contacto</th>
-              <th className="px-6 py-4 font-medium w-[35%]">Análisis IA</th>
+              <th className="px-6 py-4 font-medium w-[20%]">Empresa</th>
+              <th className="px-6 py-4 font-medium w-[20%]">Decisor</th>
+              <th className="px-6 py-4 font-medium w-[40%]">Contacto</th>
               <th className="px-6 py-4 font-medium text-right w-[20%]">Acción</th>
             </tr>
           </thead>
@@ -135,18 +128,6 @@ export function LeadsTable({ leads, onViewMessage, onMarkContacted, onMarkDiscar
                         <span>Ver Perfil</span>
                       </a>
                     )}
-                  </div>
-                </td>
-                <td className="px-6 py-4 align-top">
-                  <div className="bg-secondary/40 p-3 rounded-lg border border-border/50 shadow-sm relative overflow-hidden">
-                    <div className="absolute top-0 left-0 w-1 h-full bg-primary/20" />
-                    <div className="flex items-start gap-2 mb-2">
-                      <Sparkles className="w-3.5 h-3.5 text-primary mt-0.5 flex-shrink-0" />
-                      <span className="text-xs font-bold text-foreground uppercase tracking-wide">Insight</span>
-                    </div>
-                    <p className="text-xs text-muted-foreground leading-relaxed line-clamp-2">
-                      {lead.aiAnalysis.summary}
-                    </p>
                   </div>
                 </td>
                 <td className="px-6 py-4 align-top text-right">

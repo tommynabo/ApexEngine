@@ -148,57 +148,6 @@ export function MessageModal({ lead, onClose, onApprove }: MessageModalProps) {
                   </div>
                )}
 
-               {/* Psychological Profile & Deep Analysis - STRUCTURED VIEW */}
-               {(lead.aiAnalysis?.psychologicalProfile || lead.aiAnalysis?.fullAnalysis) && (
-                  <div className="space-y-3">
-                     <div className="flex items-center gap-2">
-                        <span className="text-xs font-bold text-primary uppercase tracking-wide">🧠 Deep Research & Psicología</span>
-                     </div>
-
-                     <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                        {/* Profile */}
-                        <div className="bg-zinc-800/50 p-3 rounded-lg border border-indigo-500/20 hover:border-indigo-500/40 transition-colors">
-                           <div className="flex items-center gap-2 mb-2 text-indigo-400">
-                              <Wand2 className="w-3.5 h-3.5" />
-                              <span className="text-[10px] font-bold uppercase">Perfil Psicológico</span>
-                           </div>
-                           <p className="text-xs text-zinc-300 leading-snug">
-                              {lead.aiAnalysis?.psychologicalProfile || "Análisis en curso..."}
-                           </p>
-                        </div>
-
-                        {/* Business Moment */}
-                        <div className="bg-zinc-800/50 p-3 rounded-lg border border-emerald-500/20 hover:border-emerald-500/40 transition-colors">
-                           <div className="flex items-center gap-2 mb-2 text-emerald-400">
-                              <Check className="w-3.5 h-3.5" />
-                              <span className="text-[10px] font-bold uppercase">Momento Empresarial</span>
-                           </div>
-                           <p className="text-xs text-zinc-300 leading-snug">
-                              {lead.aiAnalysis?.businessMoment || "Analizando..."}
-                           </p>
-                        </div>
-
-                        {/* Sales Angle */}
-                        <div className="bg-zinc-800/50 p-3 rounded-lg border border-amber-500/20 hover:border-amber-500/40 transition-colors">
-                           <div className="flex items-center gap-2 mb-2 text-amber-400">
-                              <Loader2 className="w-3.5 h-3.5" /> {/* Reusing loader icon as 'Target' for now */}
-                              <span className="text-[10px] font-bold uppercase">Ángulo de Venta</span>
-                           </div>
-                           <p className="text-xs text-zinc-300 leading-snug">
-                              {lead.aiAnalysis?.salesAngle || "Generando estrategia..."}
-                           </p>
-                        </div>
-                     </div>
-
-                     {/* Fallback for legacy full text if structured fields are empty but fullAnalysis exists */}
-                     {!lead.aiAnalysis?.psychologicalProfile && lead.aiAnalysis?.fullAnalysis && (
-                        <div className="p-3 bg-zinc-800/30 rounded-lg text-xs text-zinc-400">
-                           {lead.aiAnalysis.fullAnalysis}
-                        </div>
-                     )}
-                  </div>
-               )}
-
                {/* Message Body */}
                <div className="relative">
                   <div className="absolute top-0 right-0 p-2 z-10">

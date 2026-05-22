@@ -54,16 +54,20 @@ function escapeCSV(value: string | undefined): string {
 }
 
 function exportLeadsToCSV(campaign: LinkedInCampaign, leads: LinkedInLead[]) {
-  const headers = ['Nombre', 'Titular (Headline)', 'Empresa', 'URL LinkedIn', 'Ubicación', 'Email', 'Estado'];
-  const rows = leads.map((l) => [
-    escapeCSV(l.name),
-    escapeCSV(l.headline),
-    escapeCSV(l.company),
-    escapeCSV(l.linkedin_url),
-    escapeCSV(l.location),
-    escapeCSV(l.email),
-    escapeCSV(LEAD_STATUS_LABELS[l.status]),
-  ].join(','));
+  const headers = ['Nombre', 'Apellido', 'Email', 'Cargo', 'Perfil de LinkedIn'];
+  const rows = leads.map((l) => {
+    const fullName = (l.name ?? '').trim();
+    const spaceIdx = fullName.indexOf(' ');
+    const firstName = spaceIdx === -1 ? fullName : fullName.slice(0, spaceIdx);
+    const lastName = spaceIdx === -1 ? '' : fullName.slice(spaceIdx + 1);
+    return [
+      escapeCSV(firstName),
+      escapeCSV(lastName),
+      escapeCSV(l.email),
+      escapeCSV(l.headline),
+      escapeCSV(l.linkedin_url),
+    ].join(',');
+  });
 
   const csvContent = [headers.join(','), ...rows].join('\n');
   const blob = new Blob(['\ufeff' + csvContent], { type: 'text/csv;charset=utf-8;' });

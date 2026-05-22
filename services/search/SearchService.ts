@@ -150,271 +150,6 @@ Responde SOLO con JSON:
     }
 
     // ═══════════════════════════════════════════════════════════════════════════
-    // DEEP RESEARCH - Google Search for company/owner info
-    // ═══════════════════════════════════════════════════════════════════════════
-    private async deepResearchLead(lead: Lead, onLog: LogCallback): Promise<string> {
-        if (!this.isRunning) return '';
-
-        const searchQueries = [];
-
-        // Research company
-        if (lead.companyName && lead.companyName !== 'Sin Nombre') {
-            searchQueries.push(`"${lead.companyName}" empresa valores misión`);
-        }
-
-        // Research owner if we have a name
-        if (lead.decisionMaker?.name) {
-            searchQueries.push(`"${lead.decisionMaker.name}" ${lead.companyName} entrevista`);
-            searchQueries.push(`"${lead.decisionMaker.name}" linkedin`);
-        }
-
-        // Research from website
-        if (lead.website) {
-            searchQueries.push(`site:${lead.website} "sobre nosotros" OR "quiénes somos" OR "about"`);
-        }
-
-        if (searchQueries.length === 0) return '';
-
-        try {
-            const searchInput = {
-                queries: searchQueries.join('\n'),
-                maxPagesPerQuery: 1,
-                resultsPerPage: 5,
-                languageCode: 'es',
-                countryCode: 'es',
-            };
-
-            const results = await this.callApifyActor(GOOGLE_SEARCH_SCRAPER, searchInput, (msg) => { }); // Silent
-
-            let researchData = '';
-            for (const result of results) {
-                if (result.organicResults) {
-                    for (const organic of result.organicResults.slice(0, 3)) {
-                        researchData += `\n- ${organic.title}: ${organic.description || ''}`;
-                    }
-                }
-            }
-
-            return researchData;
-        } catch (e) {
-            return '';
-        }
-    }
-
-    // ═══════════════════════════════════════════════════════════════════════════
-    // ULTRA-COMPLETE AI ANALYSIS - Psychological + Business + Bottleneck
-    // ═══════════════════════════════════════════════════════════════════════════
-    private async generateUltraAnalysis(lead: Lead, researchData: string): Promise<{
-        fullAnalysis: string;
-        psychologicalProfile: string;
-        businessMoment: string;
-        salesAngle: string;
-        personalizedMessage: string;
-        bottleneck: string;
-    }> {
-        // Siempre intentar llamar /api/openai (no depender de this.openaiKey)
-        const socialLinksStr = lead.social_links && Object.keys(lead.social_links).length > 0
-            ? Object.entries(lead.social_links).map(([k, v]) => `${k}: ${v}`).join(' | ')
-            : 'No disponibles';
-
-        const context = `
-═══ DATOS DEL LEAD ═══
-Empresa: ${lead.companyName}
-Web: ${lead.website || 'No disponible'}
-Ubicación: ${lead.location || 'España'}
-Decisori: ${lead.decisionMaker?.name || 'No identificado'}
-Cargo: ${lead.decisionMaker?.role || 'Propietario'}
-Email: ${lead.decisionMaker?.email || 'No disponible'}
-LinkedIn: ${lead.decisionMaker?.linkedin || 'No disponible'}
-Redes sociales: ${socialLinksStr}
-Tipo ICP: ${lead.icp_type || 'other'}
-Resumen inicial: ${lead.aiAnalysis?.summary || ''}
-
-═══ INVESTIGACIÓN ADICIONAL ═══
-${researchData || 'Sin datos adicionales'}
-        `.trim();
-
-        const icpScoringRules = lead.icp_type === 'skool_creator'
-            ? `
-REGLAS ICP — SKOOL CREATOR:
-- PUNTUÁ ALTO si la bio/resumen menciona: "comunidad", "alumnos", "transformación", "coach", "programa", "mentoring".
-- PENALIZA / DESCARTA si no hay enlaces a redes sociales ni oferta clara visible en el perfil.
-- salesAngle: enfoca el argumento en cómo escalar la captación de nuevos miembros a la comunidad sin saturarse respondiendo DMs uno a uno.`
-            : lead.icp_type === 'agency'
-            ? `
-REGLAS ICP — AGENCIA DE MARKETING:
-- PUNTUÁ ALTO a Fundadores (CEO, Founder, Director, Co-Founder) de agencias con servicios B2B medibles: growth, paid media, SEO, lead gen, performance marketing.
-- PENALIZA: freelancers individuales sin equipo, agencias de diseño gráfico básico, consultores genéricos sin oferta B2B clara.
-- salesAngle: muestra cómo automatizar la captación de nuevos clientes para la propia agencia, liberando al fundador de la prospección manual.`
-            : '';
-
-        const MAX_RETRIES = 2;
-        for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
-            try {
-                const response = await fetch('/api/openai', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({
-                        model: 'gpt-4o-mini',
-                        messages: [
-                            {
-                                role: 'system',
-                                content: `Eres un experto en de prospección B2B. Tu trabajo es analizar leads para enviarles cold outreach.
-PÚBLICO OBJETIVO: Emprendedores digitales, Infoproductores, Coaches High Ticket, Consultores online (SEO, Nutrición, etc.) y Dueños de Comunidades. Tienen negocios 100% online rentables, pero están saturados por el trabajo manual de prospección, DMs y gestión de leads.
-OBJETIVO: Vender el siguiente paso (agendar llamada rápida o enviar un vídeo Loom/Miro de demostración). NUNCA vender el servicio en el primer impacto.
-TONO (REGLA DE ORO): Directo, pragmático, de igual a igual. Cero humo. Nada de cumplidos vacíos. Lenguaje de negocios digitales.
-
-FRONTERA DE CONTEXTO: Analiza el perfil del creador/consultor y el tipo de servicio o comunidad que ofrece. Redacta una línea de apertura que conecte su nicho específico (ej. consultoría SEO, coaching de nutrición, comunidad de inversores) con el cuello de botella de escalar operaciones online sin quemarse respondiendo mensajes manuales. No repitas su titular. Demuestra que entiendes cómo funciona su modelo de negocio digital.
-Variables a ingerir para la personalización: Años en el puesto/empresa, sector específico, hitos recientes.
-IMPORTANTE: NUNCA incluyas la despedida "Un saludo", ni "[Tu Nombre]", "[Tu Empresa]", o "[Tu Teléfono]". El mensaje debe cortarse antes de la firma.
-${icpScoringRules}
-DEBES generar exactamente este JSON (sin markdown, solo JSON puro):
-{
-  "psychologicalProfile": "Describe su perfil en 2 frases (Ej: 'Visionario y directo. Valora la innovación...')",
-  "businessMoment": "Deduce en qué fase está la empresa (Ej: 'Expansión agresiva', 'Consolidación', 'Buscando eficiencia')",
-  "salesAngle": "El argumento ÚNICO para venderle a ESTA persona hoy.",
-  "bottleneck": "Una frase BRUTAL y específica sobre su mayor freno o cuello de botella detectado.",
-  "personalizedMessage": "El mensaje final aplicando todas las reglas anteriores."
-}
-
-IMPORTANTE: Responde SOLO con JSON válido.`
-                            },
-                            {
-                                role: 'user',
-                                content: `Analiza este lead (Intento ${attempt}):\n\n${context}`
-                            }
-                        ],
-                        temperature: 0.7,
-                        max_tokens: 1000
-                    })
-                });
-
-                if (!response.ok) throw new Error(`HTTP ${response.status}`);
-
-                const data = await response.json();
-                const content = data.choices?.[0]?.message?.content || '';
-                const jsonMatch = content.match(/\{[\s\S]*\}/);
-
-                if (jsonMatch) {
-                    const parsed = JSON.parse(jsonMatch[0]);
-                    return {
-                        fullAnalysis: `🧠 PERFIL: ${parsed.psychologicalProfile}\n🏢 MOMENTO: ${parsed.businessMoment}\n💡 ÁNGULO: ${parsed.salesAngle}`,
-                        psychologicalProfile: parsed.psychologicalProfile || 'No detectado',
-                        businessMoment: parsed.businessMoment || 'No detectado',
-                        salesAngle: parsed.salesAngle || 'Genérico',
-                        personalizedMessage: parsed.personalizedMessage || `Hola ${lead.decisionMaker?.name || 'equipo'}, me gustaría contactar con vosotros.`,
-                        bottleneck: parsed.bottleneck || 'Oportunidad de mejora detectada'
-                    };
-                }
-            } catch (e) {
-                console.error(`Attempt ${attempt} failed:`, e);
-                if (attempt === MAX_RETRIES) break;
-                await new Promise(r => setTimeout(r, 1000 * attempt));
-            }
-        }
-
-        // Fallback genérico decente (sin "Sin API Key")
-        return {
-            fullAnalysis: `${lead.companyName}: Negocio online/Consultoría activa en ${lead.location || 'Internet'}. Decisor saturado por gestión manual de leads.`,
-            psychologicalProfile: `${lead.decisionMaker?.role || 'Emprendedor'} digital. Valora su tiempo y busca escalar operaciones sin quemarse.`,
-            businessMoment: 'Buscando escalar sin caos manual',
-            salesAngle: 'Automatización de prospección y gestión de DMs',
-            personalizedMessage: `Hola ${lead.decisionMaker?.name || 'equipo'}, veo que estar respondiendo DMs manualmente frena tu capacidad de escalar. Te propongo un vídeo de Loom de 2 min mostrando cómo solucionarlo.`,
-            bottleneck: 'Saturación por prospección y contestación manual de mensajes'
-        };
-    }
-
-    // ═══════════════════════════════════════════════════════════════════════════
-    // GENERATE TWO MESSAGES FOR MARCOS (Message A & B)
-    // ═══════════════════════════════════════════════════════════════════════════
-    private async generateOneMessage(lead: Lead): Promise<{
-        messageA: string;
-    }> {
-        console.log('[MESSAGE] Generando 1 mensaje (solo producto)...');
-
-        try {
-            console.log('[MESSAGE] 📡 Llamando /api/openai...');
-
-            const controller = new AbortController();
-            const timeoutId = setTimeout(() => {
-                controller.abort();
-                console.error('[MESSAGE] TIMEOUT (300s)');
-            }, 300000); // 300 sec timeout (uncapped)
-
-            const response = await fetch('/api/openai', {
-                method: 'POST',
-                signal: controller.signal,
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({
-                    model: 'gpt-4o-mini',
-                    messages: [
-                        {
-                            role: 'system',
-                            content: `Escribe un extracto de mensaje corto B2B outreach alineado con:
-PÚBLICO: Emprendedores digitales, Infoproductores, Coaches High Ticket, Consultores online y Dueños de Comunidades.
-DOLOR: Saturados por el trabajo manual de prospección, DMs y gestión de leads.
-EL OBJETIVO NO ES VENDER, es empujar a ver un Loom/Miro o agendar llamada rápida.
-TONO: Directo, pragmático, de igual a igual. Cero humo. Nada de cumplidos vacíos. Lenguaje de negocios digitales.
-
-CONTEXTO (FRONTERA): Analiza el perfil del creador/consultor y el tipo de servicio o comunidad que ofrece. Redacta una línea de apertura que conecte su nicho específico (ej. consultoría SEO, coaching de nutrición, comunidad de inversores) con el cuello de botella de escalar operaciones online sin quemarse respondiendo mensajes manuales. No repitas su titular. Demuestra que entiendes cómo funciona su modelo de negocio digital.
-IMPORTANTE: NUNCA incluyas la despedida "Un saludo", ni "[Tu Nombre]", "[Tu Empresa]", o "[Tu Teléfono]". El mensaje debe cortarse antes de la firma.
-
-Responde SOLO con JSON: {"messageA": "..."}`
-                        },
-                        {
-                            role: 'user',
-                            content: `Empresa: ${lead.companyName}
-Responsable: ${lead.decisionMaker?.name}
-Cargo: ${lead.decisionMaker?.role}
-
-Genera el mensaje.`
-                        }
-                    ],
-                    temperature: 0.6,
-                    max_tokens: 150
-                })
-            });
-            clearTimeout(timeoutId);
-
-            if (!response.ok) {
-                const err = await response.text();
-                console.error('[MESSAGE] HTTP error:', response.status);
-                throw new Error(`HTTP ${response.status}`);
-            }
-
-            const data = await response.json();
-            const content = data.choices?.[0]?.message?.content || '';
-
-            if (!content) {
-                console.error('[MESSAGE] Empty response');
-                throw new Error('Empty response');
-            }
-
-            const jsonMatch = content.match(/\{[\s\S]*\}/);
-
-            if (jsonMatch) {
-                const parsed = JSON.parse(jsonMatch[0]);
-                console.log('[MESSAGE] ✅ Mensaje generado');
-                return {
-                    messageA: parsed.messageA || `Hola ${lead.decisionMaker?.name}, me gustaría hablar sobre automatización.`
-                };
-            }
-        } catch (e: any) {
-            console.error('[MESSAGE] Error:', e.message);
-        }
-
-        // Fallback
-        console.log('[MESSAGE] ⚠️ Fallback message');
-        return {
-            messageA: `Hola ${lead.decisionMaker?.name || 'equipo'}, veo que gestionáis ${lead.companyName}. Tengo una solución para automatizar vuestros procesos.`
-        };
-    }
-
-    // ═══════════════════════════════════════════════════════════════════════════
     // SKOOL SEARCH — Google Dorks targeting Skool community creators
     // ═══════════════════════════════════════════════════════════════════════════
     private async searchSkool(
@@ -510,7 +245,7 @@ Genera el mensaje.`
                             businessMoment: '',
                             salesAngle: '',
                         },
-                        status: 'scraped',
+                        status: 'ready',
                     };
 
                     validLeads.push(lead);
@@ -527,44 +262,8 @@ Genera el mensaje.`
             return;
         }
 
-        // Enrich with AI analysis
-        onLog(`[SKOOL] 🧠 Analizando ${validLeads.length} leads con IA...`);
-        const enrichedLeads: Lead[] = [];
-
-        for (const lead of validLeads) {
-            if (!this.isRunning) break;
-
-            try {
-                const researchData = await this.deepResearchLead(lead, onLog);
-                const analysis = await this.generateUltraAnalysis(lead, researchData);
-                const { messageA } = await this.generateOneMessage(lead);
-
-                enrichedLeads.push({
-                    ...lead,
-                    messageA,
-                    status: 'enriched',
-                    aiAnalysis: {
-                        ...lead.aiAnalysis,
-                        fullAnalysis: analysis.fullAnalysis,
-                        psychologicalProfile: analysis.psychologicalProfile,
-                        businessMoment: analysis.businessMoment,
-                        salesAngle: analysis.salesAngle,
-                        fullMessage: analysis.personalizedMessage,
-                        generatedIcebreaker: analysis.personalizedMessage,
-                    },
-                });
-
-                onLog(`[SKOOL] ✨ Enriquecido: ${lead.companyName}`);
-                onComplete([...enrichedLeads]);
-            } catch (e: any) {
-                onLog(`[SKOOL] ⚠️ Error analizando ${lead.companyName}: ${e.message}`);
-                enrichedLeads.push(lead);
-                onComplete([...enrichedLeads]);
-            }
-        }
-
-        onLog(`[SKOOL] 🏁 Búsqueda completada: ${enrichedLeads.length} leads Skool encontrados.`);
-        onComplete(enrichedLeads);
+        onLog(`[SKOOL] 🏁 Búsqueda completada: ${validLeads.length} leads Skool encontrados.`);
+        onComplete(validLeads);
     }
 
     private async callApifyActor(actorId: string, input: any, onLog: LogCallback): Promise<any[]> {
@@ -980,30 +679,9 @@ Genera el mensaje.`
 
         onLog(`[GMAIL] 📊 Búsqueda completada: ${validLeads.length}/${targetCount} en ${attempts} intentos`);
 
-        // ── AI analysis — uses snippet stored in summary (no extra scraper) ───
-        if (this.isRunning && validLeads.length > 0) {
-            const leadsToAnalyze = validLeads.slice(0, targetCount);
-            const aiPromises = leadsToAnalyze.map(async (lead) => {
-                if (!this.isRunning) return;
-                lead.status = 'ready';
-                try {
-                    const researchDossier = `PERFIL: ${lead.companyName}\nFuente: ${lead.socialUrl || 'redes sociales'}\nBio/Snippet: ${lead.aiAnalysis.summary || 'N/A'}\nUbicación: ${lead.location}`;
-                    const analysis = await this.generateUltraAnalysis(lead, researchDossier);
-                    lead.aiAnalysis.fullAnalysis = analysis.fullAnalysis;
-                    lead.aiAnalysis.psychologicalProfile = analysis.psychologicalProfile;
-                    lead.aiAnalysis.businessMoment = analysis.businessMoment;
-                    lead.aiAnalysis.salesAngle = analysis.salesAngle;
-                    lead.aiAnalysis.fullMessage = analysis.personalizedMessage;
-                    lead.aiAnalysis.generatedIcebreaker = analysis.bottleneck;
-
-                    const messages = await this.generateOneMessage(lead);
-                    lead.messageA = messages.messageA;
-                } catch (e) {
-                    lead.aiAnalysis.fullMessage = `Contacto disponible: ${lead.socialUrl}`;
-                    lead.messageA = `Hola ${lead.decisionMaker?.name || 'equipo'}, quisiera hablar sobre automatización.`;
-                }
-            });
-            await Promise.all(aiPromises);
+        // Mark all leads as ready
+        for (const lead of validLeads) {
+            lead.status = 'ready';
         }
 
         onLog(`[GMAIL] 🏁 FINALIZADO: ${validLeads.length} leads listos`);
@@ -1173,54 +851,11 @@ Genera el mensaje.`
 
                 const candidatesBatch = candidatesToProcess.slice(0, processCount);
 
-                const aiPromises = candidatesBatch.map(async (candidate) => {
-                    if (!this.isRunning) return null;
-
-                    onLog(`[RESEARCH] 🧠 Analizando: ${candidate.decisionMaker?.name}...`);
-
-                    // Use Google snippet (stored in aiAnalysis.summary during construction).
-                    // Replaces POSTS_SCRAPER — the snippet contains headline + bio at zero cost.
-                    const googleSnippet = candidate.aiAnalysis.summary || '';
-                    const researchDossier = `PERFIL: ${candidate.decisionMaker?.name}\nHeadline: ${candidate.decisionMaker?.role} en ${candidate.companyName}\nBio/Snippet: ${googleSnippet || 'N/A'}`;
-
-                    try {
-                        const analysis = await this.generateUltraAnalysis({
-                            companyName: candidate.companyName,
-                            decisionMaker: { name: candidate.decisionMaker?.name, role: candidate.decisionMaker?.role, linkedin: candidate.decisionMaker?.linkedin }
-                        } as Lead, researchDossier);
-
-                        // Generate Message A (Product-focused)
-                        const messages = await this.generateOneMessage({
-                            companyName: candidate.companyName,
-                            decisionMaker: { name: candidate.decisionMaker?.name, role: candidate.decisionMaker?.role, linkedin: candidate.decisionMaker?.linkedin }
-                        } as Lead);
-
-                        candidate.aiAnalysis = {
-                            summary: `Psicología: ${analysis.bottleneck}`,
-                            fullAnalysis: analysis.fullAnalysis,
-                            psychologicalProfile: analysis.psychologicalProfile,
-                            businessMoment: analysis.businessMoment,
-                            salesAngle: analysis.salesAngle,
-                            fullMessage: analysis.personalizedMessage,
-                            generatedIcebreaker: analysis.bottleneck,
-                            painPoints: []
-                        };
-                        candidate.messageA = messages.messageA;
-                        candidate.status = 'ready';
-
-                        return candidate;
-                    } catch (e) {
-                        onLog(`[RESEARCH] ⚠️ Análisis fallido para ${candidate.decisionMaker?.name}`);
-                        return null;
-                    }
-                });
-
-                const results = await Promise.all(aiPromises);
-                for (const candidate of results) {
-                    if (candidate && validLeads.length < targetCount) {
-                        validLeads.push(candidate);
-                        onLog(`[SUCCESS] ✅ Lead ${validLeads.length}/${targetCount}: ${candidate.companyName}`);
-                    }
+                for (const candidate of candidatesBatch) {
+                    if (!this.isRunning) break;
+                    candidate.status = 'ready';
+                    validLeads.push(candidate);
+                    onLog(`[SUCCESS] ✅ Lead ${validLeads.length}/${targetCount}: ${candidate.companyName}`);
                 }
 
                 currentPage++;

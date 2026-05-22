@@ -47,12 +47,12 @@ export interface Lead {
   aiAnalysis: {
     summary: string;
     painPoints: string[];
-    generatedIcebreaker: string;
-    fullMessage: string;
-    fullAnalysis: string; // Legacy/Fallback
-    psychologicalProfile: string; // New structured field
-    businessMoment: string;       // New structured field
-    salesAngle: string;           // New structured field
+    generatedIcebreaker?: string;
+    fullMessage?: string;
+    fullAnalysis?: string;
+    psychologicalProfile?: string;
+    businessMoment?: string;
+    salesAngle?: string;
   };
   // New fields for Marcos' messages
   messageA?: string; // Automation-focused message
