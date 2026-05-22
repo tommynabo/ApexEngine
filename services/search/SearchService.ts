@@ -735,10 +735,13 @@ Responde SOLO con JSON:
             activeQuery = `site:linkedin.com/in ${activeQuery}`;
 
             try {
+                // startPage offsets Google results so each attempt gets a different page.
+                // currentPage starts at 1; startPage=0 means page 1, startPage=1 means page 2, etc.
                 const searchResults = await this.callApifyActor(GOOGLE_SEARCH_SCRAPER, {
                     queries: activeQuery,
-                    maxPagesPerQuery: 1,      // Hard cap — cheaper; iterate via query variation
-                    resultsPerPage: 20,       // Sufficient for one low-cost call
+                    maxPagesPerQuery: 1,
+                    resultsPerPage: 20,
+                    startPage: currentPage - 1,  // 0-indexed offset for Google pagination
                     languageCode: 'es',
                     countryCode: 'es',
                 }, onLog);
@@ -851,11 +854,33 @@ Responde SOLO con JSON:
 
                 const candidatesBatch = candidatesToProcess.slice(0, processCount);
 
-                for (const candidate of candidatesBatch) {
+                // ═══════════════════════════════════════════════════════════════════════════
+                // ICP BATCH SCORING: One OpenAI call per batch to validate ICP fit.
+                // Cheap (gpt-4o-mini, ~200 tokens). Discards false positives that pass the
+                // regex but don't truly match the ICP, and forces the loop to paginate deeper.
+                // ═══════════════════════════════════════════════════════════════════════════
+                onLog(`[ICP] 🤖 Validando ${candidatesBatch.length} candidatos con IA (batch único)...`);
+                const icpResults = await this.batchICPScore(candidatesBatch, config.icp_type || 'agency');
+
+                for (let ci = 0; ci < candidatesBatch.length; ci++) {
                     if (!this.isRunning) break;
+                    const candidate = candidatesBatch[ci];
+                    if (!icpResults[ci]) {
+                        onLog(`[ICP] ❌ Descartado (no ICP): ${candidate.decisionMaker?.name || candidate.companyName}`);
+                        continue;
+                    }
                     candidate.status = 'ready';
                     validLeads.push(candidate);
-                    onLog(`[SUCCESS] ✅ Lead ${validLeads.length}/${targetCount}: ${candidate.companyName}`);
+                    // Register in in-memory sets so duplicates within this session are caught
+                    if (candidate.decisionMaker?.linkedin) {
+                        existingLinkedinUrls.add(
+                            candidate.decisionMaker.linkedin.toLowerCase().trim()
+                        );
+                    }
+                    if (candidate.decisionMaker?.email) {
+                        existingEmails.add(candidate.decisionMaker.email.toLowerCase().trim());
+                    }
+                    onLog(`[SUCCESS] ✅ Lead ${validLeads.length}/${targetCount}: ${candidate.decisionMaker?.name || candidate.companyName}`);
                 }
 
                 currentPage++;
@@ -868,6 +893,66 @@ Responde SOLO con JSON:
 
         onLog(`[LINKEDIN] 🏁 Búsqueda completada: ${validLeads.length}/${targetCount} en ${attempts} intentos`);
         onComplete(validLeads);
+    }
+
+    /**
+     * Lightweight ICP batch scoring via a single OpenAI call.
+     * Takes up to ~10 candidates, returns a boolean array (true = passes ICP).
+     * Falls back to all-pass on any error to avoid blocking the search.
+     */
+    private async batchICPScore(candidates: Lead[], icpType: string): Promise<boolean[]> {
+        if (candidates.length === 0) return [];
+
+        const profiles = candidates
+            .map((c, i) => {
+                const snippet = (c.aiAnalysis?.summary || '').slice(0, 150);
+                return `[${i}] ${c.decisionMaker?.name || '?'} | ${c.decisionMaker?.role || '?'} | ${snippet}`;
+            })
+            .join('\n');
+
+        const icpDescription = icpType === 'agency'
+            ? 'Fundadores, CEO, Directores o Propietarios de agencias de marketing digital B2B (growth, paid media, SEO, automatización, lead gen). EXCLUYE: empleados, freelancers, diseño gráfico básico, buscando empleo.'
+            : 'Coaches high-ticket, infoproductores, creadores de comunidades online, consultores digitales con negocio propio. EXCLUYE: empleados, buscando empleo, freelancers sin negocio propio.';
+
+        try {
+            const response = await fetch('/api/openai', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    model: 'gpt-4o-mini',
+                    messages: [
+                        {
+                            role: 'system',
+                            content: `Eres un filtro ICP para prospección B2B. Analiza cada perfil y decide si encaja con el ICP objetivo.\n\nICP: ${icpDescription}\n\nResponde ÚNICAMENTE con un array JSON sin texto adicional: [{"index":0,"pass":true},{"index":1,"pass":false},...]`
+                        },
+                        {
+                            role: 'user',
+                            content: `Evalúa estos ${candidates.length} perfiles:\n${profiles}`
+                        }
+                    ],
+                    temperature: 0,
+                    max_tokens: 250
+                })
+            });
+
+            if (!response.ok) throw new Error(`HTTP ${response.status}`);
+            const data = await response.json();
+            const content: string = data.choices?.[0]?.message?.content || '[]';
+            const jsonMatch = content.match(/\[[\s\S]*\]/);
+            if (!jsonMatch) throw new Error('No JSON array in response');
+
+            const results: { index: number; pass: boolean }[] = JSON.parse(jsonMatch[0]);
+            const passArray = new Array(candidates.length).fill(true); // default pass
+            for (const r of results) {
+                if (typeof r.index === 'number' && typeof r.pass === 'boolean') {
+                    passArray[r.index] = r.pass;
+                }
+            }
+            return passArray;
+        } catch (e) {
+            console.warn('[ICP-SCORE] Error en batch scoring, aceptando todos:', e);
+            return new Array(candidates.length).fill(true);
+        }
     }
 
     private extractCompany(text: string): string {

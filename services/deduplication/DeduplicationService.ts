@@ -27,6 +27,30 @@ export class DeduplicationService {
   }
 
   /**
+   * Normaliza URLs de LinkedIn para comparación robusta.
+   * Maneja caracteres URL-encoded (ej: %C3%A9 → é) y sufijos de idioma (/es, /en).
+   */
+  private normalizeLinkedinUrl(url: string): string {
+    if (!url) return '';
+    try {
+      const decoded = decodeURIComponent(url);
+      return decoded
+        .toLowerCase()
+        .replace(/^https?:\/\//i, '')
+        .replace(/^www\./, '')
+        .replace(/\/(en|es|fr|de|pt|it|nl)(\/?$|\?).*/, '') // strip locale suffix
+        .replace(/\/$/, '')
+        .trim();
+    } catch {
+      return url
+        .toLowerCase()
+        .replace(/^https?:\/\//i, '')
+        .replace(/\/$/, '')
+        .trim();
+    }
+  }
+
+  /**
    * Normaliza nombres de empresas para comparación
    * Convierte a minúsculas y elimina espacios extras
    * @param name - Nombre a normalizar
@@ -67,9 +91,10 @@ export class DeduplicationService {
 
     try {
       // Fetch all leads from user's history (NEW SCHEMA: table 'leads')
+      // LinkedIn URL and email are stored inside decision_maker JSONB, not as flat columns
       const { data, error } = await supabase
         .from('leads')
-        .select('company_name, company_website, linkedin_url, email')
+        .select('company_name, website, decision_maker')
         .eq('user_id', userId);
 
       if (error) {
@@ -84,10 +109,9 @@ export class DeduplicationService {
 
       // Extract and normalize all previously scraped leads
       for (const row of data) {
-        // Add normalized website
-        if (row.company_website) {
-          const normalizedUrl = this.normalizeUrl(row.company_website);
-          existingWebsites.add(normalizedUrl);
+        // Fix: schema uses 'website', not 'company_website'
+        if (row.website) {
+          existingWebsites.add(this.normalizeUrl(row.website));
         }
 
         // Add normalized company name
@@ -101,15 +125,17 @@ export class DeduplicationService {
           ) {
             existingCompanyNames.add(normalizedName);
           }
-          // Add email
-          if (row.email) {
-            existingEmails.add(row.email.toLowerCase().trim());
-          }
+        }
 
-          // Add linkedin url
-          if (row.linkedin_url) {
-            existingLinkedinUrls.add(row.linkedin_url.toLowerCase().trim());
-          }
+        // Fix: email and linkedin are inside decision_maker JSONB, not flat columns.
+        // These checks must be OUTSIDE the company_name block so person-level dedup
+        // works even when company name is empty or generic.
+        const dm = row.decision_maker as { linkedin?: string; email?: string } | null;
+        if (dm?.email) {
+          existingEmails.add(dm.email.toLowerCase().trim());
+        }
+        if (dm?.linkedin) {
+          existingLinkedinUrls.add(this.normalizeLinkedinUrl(dm.linkedin));
         }
       }
 
@@ -161,9 +187,9 @@ export class DeduplicationService {
         }
       }
 
-      // Check linkedin url
+      // Check linkedin url (use normalizeLinkedinUrl to handle URL-encoding and locale suffixes)
       if (!isDuplicate && candidate.decisionMaker?.linkedin) {
-        const urlToMatch = candidate.decisionMaker.linkedin.toLowerCase().trim();
+        const urlToMatch = this.normalizeLinkedinUrl(candidate.decisionMaker.linkedin);
         if (existingLinkedinUrls.has(urlToMatch)) {
           isDuplicate = true;
           duplicateReason = `linkedin: ${urlToMatch}`;
