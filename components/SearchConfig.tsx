@@ -11,6 +11,7 @@ interface SearchConfigProps {
   isSearching: boolean;
   onOpenCriteria?: () => void;
   totalLeadsGenerated: number;
+  hidePresets?: boolean;
 }
 
 export function SearchConfig({
@@ -20,7 +21,8 @@ export function SearchConfig({
   onStop,
   isSearching,
   onOpenCriteria,
-  totalLeadsGenerated
+  totalLeadsGenerated,
+  hidePresets,
 }: SearchConfigProps & { onStop: () => void }) {
   // Helper to handle manual number input clearly
   const handleNumberChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -94,6 +96,7 @@ export function SearchConfig({
 
           <div className="mt-6 space-y-3">
             {/* ICP Quick Presets */}
+            {!hidePresets && (
             <div>
               <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-2">⚡ Presets ICP</p>
               <div className="grid grid-cols-2 gap-2">
@@ -127,6 +130,7 @@ export function SearchConfig({
                 ))}
               </div>
             </div>
+            )}
 
             {isSearching ? (
               <button

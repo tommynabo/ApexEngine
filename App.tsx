@@ -440,7 +440,6 @@ function App() {
                 leads={leads}
                 history={history.filter(s => s.icp_type === activeCampaignId)}
                 onViewMessage={setSelectedLead}
-                onSelectSession={handleViewSessionResults}
                 onBack={() => {
                   setActiveCampaignId(null);
                   setLeads([]);
