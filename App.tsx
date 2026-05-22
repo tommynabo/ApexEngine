@@ -8,6 +8,7 @@ import { MessageModal } from './components/MessageModal';
 import { LoginPage } from './components/LoginPage';
 import { CampaignsView } from './components/CampaignsView';
 import { HistoryModal } from './components/HistoryModal';
+import { LinkedInMainView } from './components/SistemaLinkedin/LinkedInMainView';
 import { Lead, SearchConfigState, PageView, SearchSession } from './lib/types';
 import { PROJECT_CONFIG } from './config/project';
 import { searchService } from './services/search/SearchService';
@@ -431,6 +432,12 @@ function App() {
             history={history}
             onSelectSession={handleViewSessionResults}
           />
+        )}
+
+        {currentPage === 'linkedin' && (
+          <div className="animate-[fadeIn_0.3s_ease-out]">
+            <LinkedInMainView history={history} />
+          </div>
         )}
 
       </main>

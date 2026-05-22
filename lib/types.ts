@@ -1,6 +1,6 @@
 export type PlatformSource = 'gmail' | 'linkedin' | 'instagram';
 export type SearchMode = 'fast' | 'deep';
-export type PageView = 'login' | 'dashboard' | 'campaigns';
+export type PageView = 'login' | 'dashboard' | 'campaigns' | 'linkedin';
 
 export interface ApexEngineConfig {
   targetIndustries: string[];

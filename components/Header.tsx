@@ -35,6 +35,7 @@ export function Header({ currentPage, onNavigate, onLogout, userName }: HeaderPr
         <nav className="hidden md:flex items-center gap-8 text-sm font-medium">
           <a onClick={() => onNavigate('dashboard')} className={getLinkClass('dashboard')}>Panel</a>
           <a onClick={() => onNavigate('campaigns')} className={getLinkClass('campaigns')}>Historial de Búsquedas</a>
+          <a onClick={() => onNavigate('linkedin')} className={getLinkClass('linkedin')}>Sistema LinkedIn</a>
         </nav>
 
         <div className="flex items-center gap-4">
