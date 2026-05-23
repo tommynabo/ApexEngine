@@ -8,6 +8,7 @@ import {
   ChevronUp,
   ChevronDown,
   Users,
+  X,
 } from 'lucide-react';
 
 interface LinkedInCampaignDetailProps {
@@ -81,6 +82,28 @@ function exportLeadsToCSV(campaign: LinkedInCampaign, leads: LinkedInLead[]) {
   URL.revokeObjectURL(url);
 }
 
+// ─── Date-range filter for export ─────────────────────────────────────────
+
+function getFilteredLeadsForExport(
+  leads: LinkedInLead[],
+  startDate: string | null,
+  endDate: string | null,
+): LinkedInLead[] {
+  if (!startDate && !endDate) return leads;
+  return leads.filter((lead) => {
+    const date = lead.created_at instanceof Date ? lead.created_at : new Date(lead.created_at);
+    if (startDate) {
+      const from = new Date(startDate + 'T00:00:00');
+      if (date < from) return false;
+    }
+    if (endDate) {
+      const to = new Date(endDate + 'T23:59:59');
+      if (date > to) return false;
+    }
+    return true;
+  });
+}
+
 // ─── Sort helpers ──────────────────────────────────────────────────────────
 
 type SortKey = keyof Pick<LinkedInLead, 'name' | 'headline' | 'company' | 'location' | 'status'>;
@@ -102,6 +125,17 @@ export function LinkedInCampaignDetail({ campaign, leads, onBack }: LinkedInCamp
   const [searchQuery, setSearchQuery] = useState('');
   const [sortKey, setSortKey] = useState<SortKey>('name');
   const [sortDir, setSortDir] = useState<SortDir>('asc');
+  const [startDate, setStartDate] = useState<string | null>(null);
+  const [endDate, setEndDate] = useState<string | null>(null);
+
+  const handleExport = () => {
+    const result = getFilteredLeadsForExport(leads, startDate, endDate);
+    if (result.length === 0 && (startDate || endDate)) {
+      alert('No hay leads en este rango de fechas');
+      return;
+    }
+    exportLeadsToCSV(campaign, result);
+  };
 
   const handleSort = (key: SortKey | null) => {
     if (!key) return;
@@ -172,27 +206,64 @@ export function LinkedInCampaignDetail({ campaign, leads, onBack }: LinkedInCamp
           </div>
         </div>
 
-        {/* Right: search + export */}
-        <div className="flex items-center gap-2 flex-shrink-0">
-          <div className="relative">
-            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground pointer-events-none" />
-            <input
-              type="text"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Buscar lead…"
-              className="pl-8 pr-3 py-2 text-sm bg-secondary/40 border border-input rounded-lg focus:ring-1 focus:ring-primary focus:border-primary placeholder:text-muted-foreground w-48 transition-all"
-            />
+        {/* Right: search + date filter + export */}
+        <div className="flex flex-col gap-2 flex-shrink-0">
+          {/* Row 1: search + export button */}
+          <div className="flex items-center gap-2">
+            <div className="relative">
+              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground pointer-events-none" />
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Buscar lead…"
+                className="pl-8 pr-3 py-2 text-sm bg-secondary/40 border border-input rounded-lg focus:ring-1 focus:ring-primary focus:border-primary placeholder:text-muted-foreground w-48 transition-all"
+              />
+            </div>
+            <button
+              onClick={handleExport}
+              disabled={leads.length === 0}
+              className="relative flex items-center gap-2 bg-primary text-primary-foreground font-semibold text-sm px-4 py-2 rounded-lg hover:brightness-110 active:scale-[0.98] transition-all shadow-md shadow-primary/20 disabled:opacity-50 disabled:cursor-not-allowed flex-shrink-0"
+            >
+              <Download className="w-4 h-4" />
+              <span className="hidden sm:inline">Descargar Excel / CSV</span>
+              <span className="sm:hidden">CSV</span>
+              {(startDate || endDate) && (
+                <span className="hidden sm:inline ml-1 bg-white/20 text-primary-foreground text-[9px] font-bold px-1.5 py-0.5 rounded-full leading-none tracking-wide">
+                  FILTRADO
+                </span>
+              )}
+            </button>
           </div>
-          <button
-            onClick={() => exportLeadsToCSV(campaign, filteredLeads)}
-            disabled={filteredLeads.length === 0}
-            className="flex items-center gap-2 bg-primary text-primary-foreground font-semibold text-sm px-4 py-2 rounded-lg hover:brightness-110 active:scale-[0.98] transition-all shadow-md shadow-primary/20 disabled:opacity-50 disabled:cursor-not-allowed flex-shrink-0"
-          >
-            <Download className="w-4 h-4" />
-            <span className="hidden sm:inline">Descargar Excel / CSV</span>
-            <span className="sm:hidden">CSV</span>
-          </button>
+
+          {/* Row 2: date range filter */}
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-muted-foreground whitespace-nowrap hidden sm:block">Rango exportación:</span>
+            <input
+              type="date"
+              value={startDate ?? ''}
+              onChange={(e) => setStartDate(e.target.value || null)}
+              title="Fecha de inicio"
+              className="px-3 py-1.5 text-sm bg-secondary/40 border border-input rounded-lg focus:ring-1 focus:ring-primary focus:border-primary text-foreground transition-all"
+            />
+            <span className="text-xs text-muted-foreground select-none">→</span>
+            <input
+              type="date"
+              value={endDate ?? ''}
+              onChange={(e) => setEndDate(e.target.value || null)}
+              title="Fecha de fin"
+              className="px-3 py-1.5 text-sm bg-secondary/40 border border-input rounded-lg focus:ring-1 focus:ring-primary focus:border-primary text-foreground transition-all"
+            />
+            {(startDate || endDate) && (
+              <button
+                onClick={() => { setStartDate(null); setEndDate(null); }}
+                title="Limpiar filtro de fechas"
+                className="p-1.5 rounded-lg text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            )}
+          </div>
         </div>
       </div>
 

@@ -18,4 +18,5 @@ export interface LinkedInLead {
   location: string;
   email: string;
   status: 'scraped' | 'enriched' | 'ready' | 'contacted' | 'replied' | 'discarded';
+  created_at: Date;
 }

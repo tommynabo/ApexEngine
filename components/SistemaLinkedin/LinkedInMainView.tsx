@@ -23,7 +23,7 @@ function sessionToCampaign(session: SearchSession): LinkedInCampaign {
   };
 }
 
-function leadToLinkedInLead(lead: Lead, campaignId: string): LinkedInLead {
+function leadToLinkedInLead(lead: Lead, campaignId: string, sessionDate: Date): LinkedInLead {
   return {
     id: lead.id,
     campaign_id: campaignId,
@@ -34,6 +34,7 @@ function leadToLinkedInLead(lead: Lead, campaignId: string): LinkedInLead {
     location: lead.location || '',
     email: lead.decisionMaker?.email || '',
     status: lead.status,
+    created_at: sessionDate,
   };
 }
 
@@ -53,7 +54,7 @@ export function LinkedInMainView({ history }: LinkedInMainViewProps) {
     if (!session) return { activeCampaign: null, activeLeads: [] };
     return {
       activeCampaign: sessionToCampaign(session),
-      activeLeads: session.leads.map((l) => leadToLinkedInLead(l, session.id)),
+      activeLeads: session.leads.map((l) => leadToLinkedInLead(l, session.id, session.date)),
     };
   }, [selectedCampaignId, history]);
 
