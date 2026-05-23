@@ -89,7 +89,7 @@ function escapeCSV(value: string | undefined): string {
 
 function exportPipelineCSV(leads: PipelineLead[]): void {
   if (leads.length === 0) return;
-  const headers = ['Nombre', 'Apellido', 'Email', 'Cargo', 'Perfil de LinkedIn', 'Empresa', 'Fecha'];
+  const headers = ['Nombre', 'Apellido', 'Email', 'Cargo', 'URL de LinkedIn'];
   const rows = leads.map((l) => {
     const fullName = (l.decisionMaker?.name ?? '').trim();
     const spaceIdx = fullName.indexOf(' ');
@@ -101,8 +101,6 @@ function exportPipelineCSV(leads: PipelineLead[]): void {
       escapeCSV(l.decisionMaker?.email),
       escapeCSV(l.decisionMaker?.role),
       escapeCSV(l.decisionMaker?.linkedin || l.socialUrl || ''),
-      escapeCSV(l.companyName),
-      l.sessionDate.toISOString().slice(0, 10),
     ].join(',');
   });
   const csvContent = [headers.join(','), ...rows].join('\n');
