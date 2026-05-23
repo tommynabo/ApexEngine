@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Copy, Check, ExternalLink, Zap } from 'lucide-react';
+import { Copy, Check, ExternalLink, Zap, Download, X } from 'lucide-react';
 import { Lead, SearchSession } from '../lib/types';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -78,6 +78,44 @@ const STATUS_CLASS: Record<string, string> = {
   replied: 'bg-primary/10 text-primary',
   discarded: 'bg-destructive/20 text-destructive',
 };
+
+// ─── CSV helpers ──────────────────────────────────────────────────────────
+
+function escapeCSV(value: string | undefined): string {
+  if (!value) return '';
+  const cleaned = value.replace(/"/g, '""').replace(/[\n\r]/g, ' ');
+  return cleaned.includes(',') || cleaned.includes('"') ? `"${cleaned}"` : cleaned;
+}
+
+function exportPipelineCSV(leads: PipelineLead[]): void {
+  if (leads.length === 0) return;
+  const headers = ['Nombre', 'Apellido', 'Email', 'Cargo', 'Perfil de LinkedIn', 'Empresa', 'Fecha'];
+  const rows = leads.map((l) => {
+    const fullName = (l.decisionMaker?.name ?? '').trim();
+    const spaceIdx = fullName.indexOf(' ');
+    const firstName = spaceIdx === -1 ? fullName : fullName.slice(0, spaceIdx);
+    const lastName = spaceIdx === -1 ? '' : fullName.slice(spaceIdx + 1);
+    return [
+      escapeCSV(firstName),
+      escapeCSV(lastName),
+      escapeCSV(l.decisionMaker?.email),
+      escapeCSV(l.decisionMaker?.role),
+      escapeCSV(l.decisionMaker?.linkedin || l.socialUrl || ''),
+      escapeCSV(l.companyName),
+      l.sessionDate.toISOString().slice(0, 10),
+    ].join(',');
+  });
+  const csvContent = [headers.join(','), ...rows].join('\n');
+  const blob = new Blob(['\ufeff' + csvContent], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = `pipeline_${new Date().toISOString().slice(0, 10)}.csv`;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+}
 
 // ─── Row ──────────────────────────────────────────────────────────────────────
 
@@ -205,14 +243,33 @@ export function CampaignPipeline({ sessions, activeLeads = [], onViewMessage }: 
     setTimeout(() => setCopiedId(null), 2000);
   };
 
+  const [startDate, setStartDate] = useState<string | null>(null);
+  const [endDate, setEndDate] = useState<string | null>(null);
+
   // Flatten all historical leads, attach sessionDate
   const historicalLeads: PipelineLead[] = sessions.flatMap(s =>
     s.leads.map(l => ({ ...l, sessionDate: s.date }))
   );
 
-  // Group historical leads by date bucket
+  // Apply date range filter
+  const filteredHistoricalLeads: PipelineLead[] = (startDate || endDate)
+    ? historicalLeads.filter((lead) => {
+        const date = lead.sessionDate;
+        if (startDate) {
+          const from = new Date(startDate + 'T00:00:00');
+          if (date < from) return false;
+        }
+        if (endDate) {
+          const to = new Date(endDate + 'T23:59:59');
+          if (date > to) return false;
+        }
+        return true;
+      })
+    : historicalLeads;
+
+  // Group filtered leads by date bucket
   const groupMap = new Map<string, { leads: PipelineLead[]; sampleDate: Date }>();
-  for (const lead of historicalLeads) {
+  for (const lead of filteredHistoricalLeads) {
     const bucket = getDateBucket(lead.sessionDate);
     const existing = groupMap.get(bucket);
     if (existing) {
@@ -283,15 +340,64 @@ export function CampaignPipeline({ sessions, activeLeads = [], onViewMessage }: 
         </div>
       )}
 
+      {/* Historical groups — no-results message when filter is active */}
+      {historicalLeads.length > 0 && (startDate || endDate) && filteredHistoricalLeads.length === 0 && (
+        <div className="text-center py-10 text-muted-foreground border border-dashed border-border rounded-xl">
+          <p className="font-medium">No hay leads en este rango de fechas</p>
+          <button
+            onClick={() => { setStartDate(null); setEndDate(null); }}
+            className="mt-2 text-xs text-primary hover:underline"
+          >
+            Limpiar filtro
+          </button>
+        </div>
+      )}
+
       {/* Historical groups */}
       {sortedGroups.length > 0 && (
         <div className="bg-card border border-border rounded-xl overflow-hidden shadow-sm">
           {/* Pipeline header */}
-          <div className="px-4 py-3 border-b border-border flex items-center justify-between">
+          <div className="px-4 py-3 border-b border-border flex flex-wrap items-center justify-between gap-3">
             <h3 className="font-semibold text-base text-foreground">
               Pipeline
-              <span className="ml-2 text-muted-foreground font-normal text-sm">({historicalLeads.length})</span>
+              <span className="ml-2 text-muted-foreground font-normal text-sm">
+                ({filteredHistoricalLeads.length}
+                {filteredHistoricalLeads.length !== historicalLeads.length && ` / ${historicalLeads.length}`})
+              </span>
             </h3>
+            <div className="flex items-center gap-2">
+              <input
+                type="date"
+                value={startDate ?? ''}
+                onChange={(e) => setStartDate(e.target.value || null)}
+                title="Fecha de inicio"
+                className="px-3 py-1.5 text-sm bg-secondary/40 border border-input rounded-lg focus:ring-1 focus:ring-primary focus:border-primary text-foreground transition-all"
+              />
+              <input
+                type="date"
+                value={endDate ?? ''}
+                onChange={(e) => setEndDate(e.target.value || null)}
+                title="Fecha de fin"
+                className="px-3 py-1.5 text-sm bg-secondary/40 border border-input rounded-lg focus:ring-1 focus:ring-primary focus:border-primary text-foreground transition-all"
+              />
+              <button
+                onClick={() => exportPipelineCSV(filteredHistoricalLeads)}
+                disabled={filteredHistoricalLeads.length === 0}
+                title="Descargar CSV"
+                className="p-2 rounded-lg bg-primary text-primary-foreground hover:brightness-110 active:scale-[0.98] transition-all shadow-md shadow-primary/20 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <Download className="w-4 h-4" />
+              </button>
+              {(startDate || endDate) && (
+                <button
+                  onClick={() => { setStartDate(null); setEndDate(null); }}
+                  title="Limpiar filtro de fechas"
+                  className="p-2 rounded-lg text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors border border-border"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              )}
+            </div>
           </div>
 
           <div className="overflow-x-auto">
