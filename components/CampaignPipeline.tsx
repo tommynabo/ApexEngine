@@ -371,14 +371,14 @@ export function CampaignPipeline({ sessions, activeLeads = [], onViewMessage }: 
                 value={startDate ?? ''}
                 onChange={(e) => setStartDate(e.target.value || null)}
                 title="Fecha de inicio"
-                className="px-3 py-1.5 text-sm bg-secondary/40 border border-input rounded-lg focus:ring-1 focus:ring-primary focus:border-primary text-foreground transition-all"
+                className="px-3 py-1.5 text-sm bg-black text-white border border-input rounded-lg focus:ring-1 focus:ring-primary focus:border-primary [color-scheme:dark] transition-all"
               />
               <input
                 type="date"
                 value={endDate ?? ''}
                 onChange={(e) => setEndDate(e.target.value || null)}
                 title="Fecha de fin"
-                className="px-3 py-1.5 text-sm bg-secondary/40 border border-input rounded-lg focus:ring-1 focus:ring-primary focus:border-primary text-foreground transition-all"
+                className="px-3 py-1.5 text-sm bg-black text-white border border-input rounded-lg focus:ring-1 focus:ring-primary focus:border-primary [color-scheme:dark] transition-all"
               />
               <button
                 onClick={() => exportPipelineCSV(filteredHistoricalLeads)}
