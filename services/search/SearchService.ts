@@ -70,7 +70,9 @@ Responde SOLO con JSON:
             const match = data.choices?.[0]?.message?.content?.match(/\{[\s\S]*\}/);
             if (match) {
                 console.log('[INTERPRET] ✅ Query interpretada exitosamente');
-                return JSON.parse(match[0]);
+                const parsed = JSON.parse(match[0]);
+                parsed.location = 'España'; // Always Spain — hardcoded
+                return parsed;
             }
         } catch (e: any) {
             console.error('[INTERPRET] Error:', e.message);
@@ -167,9 +169,9 @@ Responde SOLO con JSON:
         const keywords = config.advancedFilters?.keywords?.join(' OR ') || 'coach mentor consultor comunidad';
 
         const dorkQueries = [
-            `site:skool.com/communities`,
-            `(${keywords}) AND (comunidad OR alumnos OR transformación OR programa)`,
-            `(${keywords}) AND site:instagram.com (comunidad OR coach OR mentor)`,
+            `site:skool.com/communities ("España" OR "Spain" OR "Madrid" OR "Barcelona")`,
+            `(${keywords}) AND (comunidad OR alumnos OR transformación OR programa) AND ("España" OR "Madrid")`,
+            `(${keywords}) AND site:instagram.com (comunidad OR coach OR mentor) AND ("España" OR "Madrid")`,
         ].join('\n');
 
         onLog(`[SKOOL] 🔍 Queries: ${dorkQueries.substring(0, 100)}...`);
@@ -541,14 +543,14 @@ Responde SOLO con JSON:
             : interpreted.searchQuery;
 
         const ICP_QUERY_VARIANTS: string[] = [
-            `(site:instagram.com OR site:twitter.com) ("agencia de marketing" OR "marketing digital") "@gmail.com" ${interpreted.location}`,
-            `(site:instagram.com OR site:twitter.com OR site:tiktok.com) ("skool" OR "comunidad online" OR "infoproductor") "@gmail.com"`,
-            `(site:instagram.com OR site:twitter.com) ("ayudo a" OR "coach" OR "consultor") "@gmail.com" ${interpreted.location}`,
-            `(site:instagram.com OR site:twitter.com OR site:tiktok.com) "${baseQuery}" "@gmail.com"`,
-            `site:instagram.com ("agencia" OR "fundador" OR "ceo") "@gmail.com" ${interpreted.location}`,
-            `site:twitter.com ("growth" OR "director" OR "fundador") ("agencia" OR "skool") "@gmail.com"`,
-            `(site:instagram.com OR site:tiktok.com) ("marketing digital" OR "skool" OR "comunidad") "@gmail.com"`,
-            `(site:instagram.com OR site:twitter.com) "${baseQuery}" ("founder" OR "ceo") "@gmail.com"`,
+            `(site:instagram.com OR site:twitter.com) ("agencia de marketing" OR "marketing digital") "@gmail.com" ("España" OR "Madrid" OR "Barcelona")`,
+            `(site:instagram.com OR site:twitter.com OR site:tiktok.com) ("skool" OR "comunidad online" OR "infoproductor") "@gmail.com" ("España" OR "Spain")`,
+            `(site:instagram.com OR site:twitter.com) ("ayudo a" OR "coach" OR "consultor") "@gmail.com" ("España" OR "Madrid" OR "Barcelona")`,
+            `(site:instagram.com OR site:twitter.com OR site:tiktok.com) "${baseQuery}" "@gmail.com" ("España" OR "Spain")`,
+            `site:instagram.com ("agencia" OR "fundador" OR "ceo") "@gmail.com" ("España" OR "Madrid" OR "Barcelona")`,
+            `site:twitter.com ("growth" OR "director" OR "fundador") ("agencia" OR "skool") "@gmail.com" "España"`,
+            `(site:instagram.com OR site:tiktok.com) ("marketing digital" OR "skool" OR "comunidad") "@gmail.com" "España"`,
+            `(site:instagram.com OR site:twitter.com) "${baseQuery}" ("founder" OR "ceo") "@gmail.com" "España"`,
         ];
 
         const validLeads: Lead[] = [];
@@ -766,7 +768,7 @@ Responde SOLO con JSON:
             if (config.advancedFilters) {
                 activeQuery = this.buildQueryWithAdvancedFilters(activeQuery, config.advancedFilters);
             }
-            activeQuery = `site:linkedin.com/in ${activeQuery}`;
+            activeQuery = `site:linkedin.com/in ${activeQuery} ("España" OR "Madrid" OR "Barcelona" OR "Valencia" OR "Sevilla" OR "Spain")`;
 
             try {
                 // startPage offsets Google results so each attempt gets a different page.
@@ -955,8 +957,8 @@ Responde SOLO con JSON:
             .join('\n');
 
         const icpDescription = icpType === 'agency'
-            ? 'Fundadores, CEO, Directores o Propietarios de agencias de marketing digital B2B (growth, paid media, SEO, automatización, lead gen). EXCLUYE: empleados, freelancers, diseño gráfico básico, buscando empleo.'
-            : 'Coaches high-ticket, infoproductores, creadores de comunidades online, consultores digitales con negocio propio. EXCLUYE: empleados, buscando empleo, freelancers sin negocio propio.';
+            ? 'Fundadores, CEO, Directores o Propietarios de agencias de marketing digital B2B UBICADOS EN ESPAÑA (growth, paid media, SEO, automatización, lead gen). EXCLUYE: perfiles fuera de España, empleados, freelancers, diseño gráfico básico, buscando empleo.'
+            : 'Coaches high-ticket, infoproductores, creadores de comunidades online, consultores digitales con negocio propio UBICADOS EN ESPAÑA. EXCLUYE: perfiles fuera de España, empleados, buscando empleo, freelancers sin negocio propio.';
 
         try {
             const response = await fetch('/api/openai', {
@@ -1003,13 +1005,13 @@ Responde SOLO con JSON:
     // FALLBACK GMAIL QUERY BUILDER — cycles exhausted variants with page/country offsets
     // ═══════════════════════════════════════════════════════════════════════════
     private buildFallbackGmailQuery(baseVariant: string, location: string, cycleNum: number): string {
-        const COUNTRY_ROTATIONS = ['México', 'Argentina', 'Colombia', 'Chile', location];
-        const country = COUNTRY_ROTATIONS[(cycleNum - 1) % COUNTRY_ROTATIONS.length];
-        // Replace the location token in the variant with a rotated country, or append it
+        // Rotate through Spanish cities to get different Google result pages — always stays in Spain
+        const SPAIN_CITIES = ['Madrid', 'Barcelona', 'Valencia', 'Sevilla', 'Bilbao', 'España'];
+        const city = SPAIN_CITIES[(cycleNum - 1) % SPAIN_CITIES.length];
         if (baseVariant.includes(location)) {
-            return baseVariant.replace(location, country);
+            return baseVariant.replace(location, `"${city}"`);
         }
-        return `${baseVariant} ${country}`;
+        return `${baseVariant} "${city}"`;
     }
 
     private extractCompany(text: string): string {
@@ -1036,6 +1038,12 @@ Responde SOLO con JSON:
     // ═══════════════════════════════════════════════════════════════════════════
     private fastICPFilter(title: string, description: string, _icpType: string): boolean {
         const corpus = `${title} ${description}`.toLowerCase();
+
+        // ── Spain gate — must show a Spain location signal in the snippet ──────
+        // LinkedIn snippets almost always include the region line; Gmail dorks
+        // already inject "España" in the query so it appears in results too.
+        const SPAIN_REGEX = /\b(espa[nñ]a|spain|madrid|barcelona|valencia|sevilla|bilbao|zaragoza|m[aá]laga|murcia|alicante|granada|vigo|c[oó]rdoba|canarias|galicia|andaluc[ií]a|euskadi|catalu[nñ]a|castilla|burgos|salamanca|valladolid|c[aá]diz|huelva|ja[eé]n|almer[ií]a|badajoz|c[aá]ceres|toledo|albacete|ciudad real|cuenca|guadalajara|le[oó]n|palencia|segovia|soria|zamora|[aá]vila|la rioja|navarra|asturias|cantabria|murcia|extremadura|baleares|canarias|pa[ií]s vasco)\b/i;
+        if (!SPAIN_REGEX.test(corpus)) return false;
 
         // ── Negative gate (hard stop) ──────────────────────────────────────────
         const NEGATIVE_REGEX = /\b(junior|intern|estudiante|freelance|buscando nuevas oportunidades|profesor)\b/i;
