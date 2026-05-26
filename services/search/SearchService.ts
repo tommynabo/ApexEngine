@@ -175,17 +175,32 @@ Responde SOLO con JSON:
         onLog(`[SKOOL] 🔍 Queries: ${dorkQueries.substring(0, 100)}...`);
 
         const validLeads: Lead[] = [];
+        const startTime = Date.now();
+        const MAX_DURATION_MS = 38 * 60 * 1000;
+        const MAX_SKOOL_ATTEMPTS = Math.min(8, Math.max(3, targetCount * 2));
+        let skoolAttempts = 0;
+
+        while (validLeads.length < targetCount && this.isRunning && skoolAttempts < MAX_SKOOL_ATTEMPTS) {
+            if (Date.now() - startTime > MAX_DURATION_MS) {
+                onLog(`[SKOOL] ⏱️ Tiempo máximo alcanzado. ${validLeads.length}/${targetCount} leads encontrados.`);
+                break;
+            }
+            skoolAttempts++;
+            onLog(`[SKOOL] 🔄 Intento ${skoolAttempts}/${MAX_SKOOL_ATTEMPTS} (página ${skoolAttempts})...`);
 
         try {
             const searchResults = await this.callApifyActor(GOOGLE_SEARCH_SCRAPER, {
                 queries: dorkQueries,
                 maxPagesPerQuery: 1,
+                startPage: skoolAttempts - 1,
                 resultsPerPage: 20,
                 languageCode: 'es',
                 countryCode: 'es',
             }, onLog);
 
             onLog(`[SKOOL] 📊 Google retornó ${searchResults.length} resultados`);
+
+            if (searchResults.length === 0) continue;
 
             for (const result of searchResults) {
                 if (!this.isRunning || validLeads.length >= targetCount) break;
@@ -249,12 +264,13 @@ Responde SOLO con JSON:
                     };
 
                     validLeads.push(lead);
-                    onLog(`[SKOOL] ✅ Lead: ${companyName}`);
+                    onLog(`[SKOOL] ✅ Lead ${validLeads.length}/${targetCount}: ${companyName}`);
                 }
             }
         } catch (e: any) {
-            onLog(`[SKOOL] ❌ Error en scraping: ${e.message}`);
+            onLog(`[SKOOL] ❌ Error en intento ${skoolAttempts}: ${e.message}`);
         }
+        } // end while skoolAttempts
 
         if (validLeads.length === 0) {
             onLog(`[SKOOL] ⚠️ No se encontraron leads Skool. Verifica la query o los filtros.`);
@@ -262,7 +278,7 @@ Responde SOLO con JSON:
             return;
         }
 
-        onLog(`[SKOOL] 🏁 Búsqueda completada: ${validLeads.length} leads Skool encontrados.`);
+        onLog(`[SKOOL] 🏁 Búsqueda completada: ${validLeads.length}/${targetCount} leads Skool en ${skoolAttempts} intentos.`);
         onComplete(validLeads);
     }
 
@@ -537,13 +553,23 @@ Responde SOLO con JSON:
 
         const validLeads: Lead[] = [];
         let attempts = 0;
-        const MAX_ATTEMPTS = ICP_QUERY_VARIANTS.length;
+        const MAX_ATTEMPTS = Math.min(30, Math.max(ICP_QUERY_VARIANTS.length, targetCount * 4));
+        const startTime = Date.now();
+        const MAX_DURATION_MS = 38 * 60 * 1000;
 
         // ═══════════════════════════════════════════════════════════════════════════
-        // SMART LOOP: Rotate ICP query variants — fixed maxPagesPerQuery:1 per call
+        // SMART LOOP: Rotate ICP query variants — cycles with startPage offsets when exhausted
         // ═══════════════════════════════════════════════════════════════════════════
         while (validLeads.length < targetCount && this.isRunning && attempts < MAX_ATTEMPTS) {
-            const activeQuery = ICP_QUERY_VARIANTS[attempts];
+            if (Date.now() - startTime > MAX_DURATION_MS) {
+                onLog(`[GMAIL] ⏱️ Tiempo máximo alcanzado. ${validLeads.length}/${targetCount} leads encontrados.`);
+                break;
+            }
+            const variantIndex = attempts % ICP_QUERY_VARIANTS.length;
+            const cycleNum = Math.floor(attempts / ICP_QUERY_VARIANTS.length);
+            const activeQuery = cycleNum === 0
+                ? ICP_QUERY_VARIANTS[variantIndex]
+                : this.buildFallbackGmailQuery(ICP_QUERY_VARIANTS[variantIndex], interpreted.location, cycleNum);
             attempts++;
 
             onLog(`[ATTEMPT ${attempts}] 🔍 Dork: "${activeQuery.substring(0, 90)}..."`);
@@ -551,9 +577,11 @@ Responde SOLO con JSON:
             // ── Single Google Search Scraper call — 1 page × 20 results ───────
             let organicResults: any[] = [];
             try {
+                const cycleNum = Math.floor((attempts - 1) / ICP_QUERY_VARIANTS.length);
                 const searchItems = await this.callApifyActor(GOOGLE_SEARCH_SCRAPER, {
                     queries: activeQuery,
                     maxPagesPerQuery: 1,
+                    startPage: cycleNum,
                     resultsPerPage: 20,
                     languageCode: 'es',
                     countryCode: 'es',
@@ -677,7 +705,7 @@ Responde SOLO con JSON:
         // ─────────────────── (old Maps/Contact Scraper code removed) ──────────
         // eslint-disable-next-line @typescript-eslint/no-unused-vars
 
-        onLog(`[GMAIL] 📊 Búsqueda completada: ${validLeads.length}/${targetCount} en ${attempts} intentos`);
+        onLog(`[GMAIL] 📊 Búsqueda completada: ${validLeads.length}/${targetCount} en ${attempts} intentos (${Math.round((Date.now() - startTime) / 1000)}s)`);
 
         // Mark all leads as ready
         for (const lead of validLeads) {
@@ -707,20 +735,26 @@ Responde SOLO con JSON:
         // Check Hard Limit
         let targetCount = config.maxResults;
         if (!targetCount || targetCount < 1) targetCount = 1;
-        // if (targetCount > 20) targetCount = 20; // Removed limit
 
         const validLeads: Lead[] = [];
         let attempts = 0;
-        const MAX_ATTEMPTS = 10;
+        const MAX_ATTEMPTS = Math.min(30, Math.max(10, targetCount * 3));
         let currentPage = 1;
+        const startTime = Date.now();
+        const MAX_DURATION_MS = 38 * 60 * 1000;
+        let consecutiveErrors = 0;
 
-        onLog(`[LINKEDIN] 🕵️‍♂️ Target: ${targetCount} leads`);
+        onLog(`[LINKEDIN] 🕵️‍♂️ Target: ${targetCount} leads | Máx. intentos: ${MAX_ATTEMPTS}`);
         console.log('[LINKEDIN] Target count:', targetCount);
 
         // ═══════════════════════════════════════════════════════════════════════════
-        // SMART LOOP: Paginate through results
+        // SMART LOOP: Paginate through results — persists until target or time limit
         // ═══════════════════════════════════════════════════════════════════════════
         while (validLeads.length < targetCount && this.isRunning && attempts < MAX_ATTEMPTS) {
+            if (Date.now() - startTime > MAX_DURATION_MS) {
+                onLog(`[LINKEDIN] ⏱️ Tiempo máximo alcanzado. ${validLeads.length}/${targetCount} leads encontrados.`);
+                break;
+            }
             attempts++;
             const needed = targetCount - validLeads.length;
             const resultsToFetch = needed * 4; // x4 multiplier
@@ -752,16 +786,18 @@ Responde SOLO con JSON:
                 }
 
                 if (allResults.length === 0) {
-                    onLog(`[LINKEDIN-ATTEMPT ${attempts}] ⚠️ No hay más resultados en página ${currentPage}.`);
-                    break;
+                    onLog(`[LINKEDIN-ATTEMPT ${attempts}] ⚠️ Página ${currentPage} vacía, saltando...`);
+                    currentPage++;
+                    continue;
                 }
 
                 const linkedInProfiles = allResults.filter((r: any) => r.url?.includes('linkedin.com/in/'));
                 onLog(`[DEBUG] 👤 Perfiles encontrados: ${linkedInProfiles.length}`);
 
                 if (linkedInProfiles.length === 0) {
-                    onLog(`[LINKEDIN-ATTEMPT ${attempts}] ⚠️ Sin perfiles en esta página.`);
-                    break;
+                    onLog(`[LINKEDIN-ATTEMPT ${attempts}] ⚠️ Sin perfiles LinkedIn en p.${currentPage}, saltando...`);
+                    currentPage++;
+                    continue;
                 }
 
                 // Transform raw profiles into provisional Leads
@@ -886,12 +922,20 @@ Responde SOLO con JSON:
                 currentPage++;
 
             } catch (error: any) {
-                onLog(`[LINKEDIN-ATTEMPT ${attempts}] ❌ Error: ${error.message}`);
-                break;
+                consecutiveErrors++;
+                onLog(`[LINKEDIN-ATTEMPT ${attempts}] ❌ Error (${consecutiveErrors}/3): ${error.message}`);
+                if (consecutiveErrors >= 3) {
+                    onLog(`[LINKEDIN] ⛔ 3 errores consecutivos — deteniendo búsqueda.`);
+                    break;
+                }
+                await new Promise(r => setTimeout(r, 2000 * consecutiveErrors));
+                currentPage++;
+                continue;
             }
+            consecutiveErrors = 0;
         } // End Smart Loop
 
-        onLog(`[LINKEDIN] 🏁 Búsqueda completada: ${validLeads.length}/${targetCount} en ${attempts} intentos`);
+        onLog(`[LINKEDIN] 🏁 Búsqueda completada: ${validLeads.length}/${targetCount} en ${attempts} intentos (${Math.round((Date.now() - startTime) / 1000)}s)`);
         onComplete(validLeads);
     }
 
@@ -953,6 +997,19 @@ Responde SOLO con JSON:
             console.warn('[ICP-SCORE] Error en batch scoring, aceptando todos:', e);
             return new Array(candidates.length).fill(true);
         }
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // FALLBACK GMAIL QUERY BUILDER — cycles exhausted variants with page/country offsets
+    // ═══════════════════════════════════════════════════════════════════════════
+    private buildFallbackGmailQuery(baseVariant: string, location: string, cycleNum: number): string {
+        const COUNTRY_ROTATIONS = ['México', 'Argentina', 'Colombia', 'Chile', location];
+        const country = COUNTRY_ROTATIONS[(cycleNum - 1) % COUNTRY_ROTATIONS.length];
+        // Replace the location token in the variant with a rotated country, or append it
+        if (baseVariant.includes(location)) {
+            return baseVariant.replace(location, country);
+        }
+        return `${baseVariant} ${country}`;
     }
 
     private extractCompany(text: string): string {
