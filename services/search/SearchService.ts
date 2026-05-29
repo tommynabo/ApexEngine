@@ -18,68 +18,81 @@ export class SearchService {
     }
 
     // ═══════════════════════════════════════════════════════════════════════════
-    // SMART QUERY INTERPRETER
+    // QUERY MULTIPLIER
+    // Generates N location-scoped Google dork variations from a single keyword.
+    // Bypasses Google's ~300-result cap by spreading across locations/sub-titles.
     // ═══════════════════════════════════════════════════════════════════════════
-    private async interpretQuery(userQuery: string, platform: 'gmail' | 'linkedin' | 'instagram'): Promise<{
-        searchQuery: string;
-        industry: string;
-        targetRoles: string[];
-        location: string;
-    }> {
-        try {
-            console.log('[INTERPRET] 📡 Llamando /api/openai...');
-            const controller = new AbortController();
-            const timeoutId = setTimeout(() => controller.abort(), 300000); // 300 sec timeout (uncapped)
-
-            // Llamar a nuestra API route privada en lugar de OpenAI directamente
-            const response = await fetch('/api/openai', {
-                method: 'POST',
-                signal: controller.signal,
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({
-                    model: 'gpt-4o-mini',
-                    messages: [
-                        {
-                            role: 'system',
-                            content: `Eres un experto en prospección B2B. Interpreta la búsqueda para encontrar DUEÑOS y DECISORES.
-Responde SOLO con JSON:
-{
-  "searchQuery": "término optimizado",
-  "industry": "sector detectado",
-  "targetRoles": ["CEO", "Fundador", etc],
-  "location": "ubicación o España"
-}`
-                        },
-                        { role: 'user', content: `Búsqueda: "${userQuery}"` }
-                    ],
-                    temperature: 0.3,
-                    max_tokens: 150
-                })
-            });
-            clearTimeout(timeoutId);
-
-            if (!response.ok) {
-                const err = await response.text();
-                console.error(`[INTERPRET] HTTP ${response.status}:`, err.substring(0, 300));
-                throw new Error(`HTTP ${response.status}`);
-            }
-
-            const data = await response.json();
-            const match = data.choices?.[0]?.message?.content?.match(/\{[\s\S]*\}/);
-            if (match) {
-                console.log('[INTERPRET] ✅ Query interpretada exitosamente');
-                const parsed = JSON.parse(match[0]);
-                parsed.location = 'España'; // Always Spain — hardcoded
-                return parsed;
-            }
-        } catch (e: any) {
-            console.error('[INTERPRET] Error:', e.message);
+    private generateQueryVariations(
+        baseKeyword: string,
+        icpType: 'agency' | 'skool_creator' | 'other'
+    ): string[] {
+        if (icpType === 'skool_creator') {
+            return [
+                `site:skool.com/about "${baseKeyword}"`,
+                `site:skool.com/about coach mentor España`,
+                `site:skool.com/about comunidad online España`,
+                `site:skool.com/about high-ticket coach Spain`,
+                `site:skool.com/about infoproductor programa`,
+            ];
         }
 
-        console.log('[INTERPRET] ⚠️ Fallback: usando query as-is');
-        return { searchQuery: userQuery, industry: userQuery, targetRoles: ['CEO', 'Fundador', 'Propietario'], location: 'España' };
+        if (icpType === 'agency') {
+            const LOCATIONS = [
+                'Madrid', 'Barcelona', 'Valencia', 'Sevilla', 'Bilbao',
+                'Zaragoza', 'Málaga', 'Alicante', 'México', 'Colombia', 'Miami', 'remoto',
+            ];
+            const baseDork =
+                `(site:linkedin.com/in/ OR site:linkedin.com/pub/) -inurl:dir -inurl:jobs ` +
+                `("CEO" OR "Founder" OR "Fundador" OR "Director" OR "Propietario" OR "Owner") ` +
+                `"${baseKeyword}"`;
+            return LOCATIONS.map(loc => `${baseDork} "${loc}"`);
+        }
+
+        // Fallback for 'other'
+        return [`site:linkedin.com/in/ "${baseKeyword}" ("CEO" OR "Founder" OR "Director")`];
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // SNIPPET PARSER — Pure TypeScript/Regex. Zero AI.
+    // Extracts FirstName, LastName, Role, Company from raw Google title/snippet.
+    // ═══════════════════════════════════════════════════════════════════════════
+    private parseSnippetData(
+        title: string,
+        _description: string,
+        url: string
+    ): { firstName: string; lastName: string; fullName: string; role: string; company: string } {
+        // ── Skool page: "Community Name - Skool" ─────────────────────────────
+        if (url.includes('skool.com')) {
+            const community = title.replace(/\s*[-–]\s*Skool\s*$/i, '').trim();
+            return { firstName: '', lastName: '', fullName: '', role: 'Fundador / Coach', company: community };
+        }
+
+        // ── LinkedIn profile: "Nombre Apellido - Cargo - Empresa | LinkedIn" ─
+        // 1. Strip " | LinkedIn" suffix
+        const cleanTitle = title.replace(/\s*\|\s*LinkedIn\s*$/i, '').trim();
+
+        // 2. Split on " - " delimiters
+        const parts = cleanTitle.split(/\s*[-–]\s*/);
+
+        // Part[0] → full name
+        const rawName = (parts[0] || '').trim();
+        const nameTokens = rawName.split(/\s+/);
+        const firstName = nameTokens[0] || '';
+        const lastName = nameTokens.slice(1).join(' ');
+
+        // Part[1] → role/headline
+        const role = (parts[1] || '').trim();
+
+        // Part[2] → company (optional)
+        const company = (parts[2] || '').trim();
+
+        return {
+            firstName,
+            lastName,
+            fullName: rawName,
+            role: role || this.extractRole(title) || 'Decisor',
+            company: company || this.extractCompany(title) || 'Empresa Desconocida',
+        };
     }
 
     // ═══════════════════════════════════════════════════════════════════════════
@@ -152,7 +165,7 @@ Responde SOLO con JSON:
     }
 
     // ═══════════════════════════════════════════════════════════════════════════
-    // SKOOL SEARCH — Google Dorks targeting Skool community creators
+    // SKOOL SEARCH — Concurrent dorks on site:skool.com/about via Promise.all
     // ═══════════════════════════════════════════════════════════════════════════
     private async searchSkool(
         config: SearchConfigState,
@@ -163,116 +176,112 @@ Responde SOLO con JSON:
         onLog: LogCallback,
         onComplete: ResultCallback
     ) {
-        onLog(`[SKOOL] 🎓 Iniciando búsqueda Skool con Google Dorks...`);
+        onLog(`[SKOOL] 🎓 Iniciando búsqueda Skool con Query Multiplier (site:skool.com/about)...`);
 
         const targetCount = Math.max(1, config.maxResults || 1);
-        const keywords = config.advancedFilters?.keywords?.join(' OR ') || 'coach mentor consultor comunidad';
+        const baseKeyword = config.advancedFilters?.keywords?.join(' ') || config.query || 'coach comunidad online';
+        const variations = this.generateQueryVariations(baseKeyword, 'skool_creator');
 
-        const dorkQueries = [
-            `site:skool.com/communities ("España" OR "Spain" OR "Madrid" OR "Barcelona")`,
-            `(${keywords}) AND (comunidad OR alumnos OR transformación OR programa) AND ("España" OR "Madrid")`,
-            `(${keywords}) AND site:instagram.com (comunidad OR coach OR mentor) AND ("España" OR "Madrid")`,
-        ].join('\n');
+        onLog(`[SKOOL] 🔀 ${variations.length} variaciones generadas — ejecutando en paralelo...`);
 
-        onLog(`[SKOOL] 🔍 Queries: ${dorkQueries.substring(0, 100)}...`);
-
-        const validLeads: Lead[] = [];
         const startTime = Date.now();
         const MAX_DURATION_MS = 38 * 60 * 1000;
-        const MAX_SKOOL_ATTEMPTS = Math.min(8, Math.max(3, targetCount * 2));
-        let skoolAttempts = 0;
 
-        while (validLeads.length < targetCount && this.isRunning && skoolAttempts < MAX_SKOOL_ATTEMPTS) {
-            if (Date.now() - startTime > MAX_DURATION_MS) {
-                onLog(`[SKOOL] ⏱️ Tiempo máximo alcanzado. ${validLeads.length}/${targetCount} leads encontrados.`);
-                break;
-            }
-            skoolAttempts++;
-            onLog(`[SKOOL] 🔄 Intento ${skoolAttempts}/${MAX_SKOOL_ATTEMPTS} (página ${skoolAttempts})...`);
-
+        // Execute all Skool variations concurrently (few queries, safe in one batch)
+        let allOrganicResults: any[] = [];
         try {
-            const searchResults = await this.callApifyActor(GOOGLE_SEARCH_SCRAPER, {
-                queries: dorkQueries,
-                maxPagesPerQuery: 1,
-                startPage: skoolAttempts - 1,
-                resultsPerPage: 20,
-                languageCode: 'es',
-                countryCode: 'es',
-            }, onLog);
-
-            onLog(`[SKOOL] 📊 Google retornó ${searchResults.length} resultados`);
-
-            if (searchResults.length === 0) continue;
-
-            for (const result of searchResults) {
-                if (!this.isRunning || validLeads.length >= targetCount) break;
-
-                const organicResults = result.organicResults || [];
-                for (const item of organicResults) {
-                    if (!this.isRunning || validLeads.length >= targetCount) break;
-
-                    const url: string = item.url || item.link || '';
-                    const title: string = item.title || '';
-                    const description: string = item.description || item.snippet || '';
-
-                    if (!url || !title) continue;
-
-                    // Extract social links from URL and description
-                    const social_links: Record<string, string> = {};
-                    if (url.includes('skool.com')) social_links['skool'] = url;
-                    if (url.includes('instagram.com')) social_links['instagram'] = url;
-                    if (url.includes('linkedin.com')) social_links['linkedin'] = url;
-
-                    const instagramMatch = description.match(/instagram\.com\/[\w.]+/);
-                    if (instagramMatch) social_links['instagram'] = `https://${instagramMatch[0]}`;
-                    const linkedinMatch = description.match(/linkedin\.com\/in\/[\w-]+/);
-                    if (linkedinMatch) social_links['linkedin'] = `https://${linkedinMatch[0]}`;
-
-                    // Build a clean company/creator name
-                    const companyName = title.replace(/ \| Skool.*$/, '').replace(/ - .*$/, '').trim() || 'Comunidad Skool';
-
-                    // Deduplicate
-                    const cleanName = companyName.toLowerCase();
-                    if (existingCompanyNames.has(cleanName)) continue;
-                    if (validLeads.some(v => v.companyName.toLowerCase() === cleanName)) continue;
-
-                    const lead: Lead = {
-                        id: `skool-${Date.now()}-${validLeads.length}`,
-                        source: 'instagram' as const,
-                        companyName,
-                        website: url,
-                        location: '',
-                        icp_type: 'skool_creator',
-                        social_links,
-                        decisionMaker: {
-                            name: '',
-                            role: 'Fundador / Coach',
-                            email: '',
-                            phone: '',
-                            linkedin: social_links['linkedin'] || '',
-                            instagram: social_links['instagram'] || '',
-                        },
-                        aiAnalysis: {
-                            summary: description.substring(0, 200),
-                            painPoints: [],
-                            generatedIcebreaker: '',
-                            fullMessage: '',
-                            fullAnalysis: '',
-                            psychologicalProfile: '',
-                            businessMoment: '',
-                            salesAngle: '',
-                        },
-                        status: 'ready',
-                    };
-
-                    validLeads.push(lead);
-                    onLog(`[SKOOL] ✅ Lead ${validLeads.length}/${targetCount}: ${companyName}`);
+            const batchResults = await Promise.all(
+                variations.map(q =>
+                    this.callApifyActor(GOOGLE_SEARCH_SCRAPER, {
+                        queries: q,
+                        maxPagesPerQuery: 1,
+                        resultsPerPage: 20,
+                        languageCode: 'es',
+                        countryCode: 'es',
+                    }, onLog).catch((e: Error) => {
+                        onLog(`[SKOOL] ⚠️ Variación falló: ${e.message}`);
+                        return [] as any[];
+                    })
+                )
+            );
+            for (const items of batchResults) {
+                for (const item of items) {
+                    if (item.organicResults) allOrganicResults = allOrganicResults.concat(item.organicResults);
                 }
             }
         } catch (e: any) {
-            onLog(`[SKOOL] ❌ Error en intento ${skoolAttempts}: ${e.message}`);
+            onLog(`[SKOOL] ❌ Error en batch concurrente: ${e.message}`);
         }
-        } // end while skoolAttempts
+
+        onLog(`[SKOOL] 📊 Total resultados crudos: ${allOrganicResults.length}`);
+
+        const validLeads: Lead[] = [];
+        for (const item of allOrganicResults) {
+            if (!this.isRunning || validLeads.length >= targetCount) break;
+            if (Date.now() - startTime > MAX_DURATION_MS) break;
+
+            const url: string = item.url || item.link || '';
+            const title: string = item.title || '';
+            const description: string = item.description || item.snippet || '';
+
+            if (!url || !title) continue;
+
+            // URL strict filter: must be skool.com
+            if (!url.includes('skool.com')) continue;
+
+            // Apply fast ICP filter
+            if (!this.fastICPFilter(title, description, 'skool_creator', url)) continue;
+
+            // Parse snippet data — strips " - Skool" from title
+            const parsed = this.parseSnippetData(title, description, url);
+            const communityName = parsed.company || 'Comunidad Skool';
+
+            // Build social links
+            const social_links: Record<string, string> = {};
+            social_links['skool'] = url;
+            const instagramMatch = description.match(/instagram\.com\/[\w.]+/);
+            if (instagramMatch) social_links['instagram'] = `https://${instagramMatch[0]}`;
+            const linkedinMatch = description.match(/linkedin\.com\/in\/[\w-]+/);
+            if (linkedinMatch) social_links['linkedin'] = `https://${linkedinMatch[0]}`;
+
+            // Session dedup
+            const cleanName = communityName.toLowerCase();
+            if (existingCompanyNames.has(cleanName)) continue;
+            if (validLeads.some(v => v.companyName.toLowerCase() === cleanName)) continue;
+
+            const lead: Lead = {
+                id: `skool-${Date.now()}-${validLeads.length}`,
+                source: 'instagram' as const,
+                companyName: communityName,
+                website: url,
+                location: '',
+                icp_type: 'skool_creator',
+                social_links,
+                decisionMaker: {
+                    name: parsed.fullName,
+                    role: parsed.role,
+                    email: '',
+                    phone: '',
+                    linkedin: social_links['linkedin'] || '',
+                    instagram: social_links['instagram'] || '',
+                },
+                aiAnalysis: {
+                    summary: description.substring(0, 200),
+                    painPoints: [],
+                    generatedIcebreaker: '',
+                    fullMessage: '',
+                    fullAnalysis: '',
+                    psychologicalProfile: '',
+                    businessMoment: '',
+                    salesAngle: '',
+                },
+                messageA: undefined,
+                status: 'ready',
+            };
+
+            validLeads.push(lead);
+            onLog(`[SKOOL] ✅ Lead ${validLeads.length}/${targetCount}: ${communityName}`);
+        }
 
         if (validLeads.length === 0) {
             onLog(`[SKOOL] ⚠️ No se encontraron leads Skool. Verifica la query o los filtros.`);
@@ -280,8 +289,13 @@ Responde SOLO con JSON:
             return;
         }
 
-        onLog(`[SKOOL] 🏁 Búsqueda completada: ${validLeads.length}/${targetCount} leads Skool en ${skoolAttempts} intentos.`);
-        onComplete(validLeads);
+        // Global dedup pass
+        const deduped = deduplicationService.filterUniqueCandidates(
+            validLeads, existingWebsites, existingCompanyNames, existingEmails, existingLinkedinUrls
+        );
+
+        onLog(`[SKOOL] 🏁 ${deduped.length}/${targetCount} leads Skool únicos encontrados`);
+        onComplete(deduped.slice(0, targetCount));
     }
 
     private async callApifyActor(actorId: string, input: any, onLog: LogCallback): Promise<any[]> {
@@ -439,7 +453,7 @@ Responde SOLO con JSON:
             this.apiKey = import.meta.env.VITE_APIFY_API_TOKEN || '';
 
             onLog(`[INIT] 🔑 API Key: ${this.apiKey ? '✅ presente (' + this.apiKey.substring(0, 10) + '...)' : '❌ FALTA'}`);
-            onLog(`[INIT] 🧠 OpenAI: ✅ API route /api/openai disponible`);
+            onLog(`[INIT] 🚫 Modo Zero-AI: activo — sin OpenAI, parseo puro TypeScript/Regex`);
             onLog(`[INIT] 👤 UserId: ${this.userId || 'no autenticado'}`);
             onLog(`[INIT] 🔎 Source: ${config.source} | Query: "${config.query}" | Max: ${config.maxResults}`);
 
@@ -470,15 +484,10 @@ Responde SOLO con JSON:
                 return;
             }
 
-            onLog(`[IA] 🧠 Interpretando: "${config.query}"...`);
-            const interpreted = await this.interpretQuery(config.query, config.source);
-            onLog(`[IA] ✅ Industria: ${interpreted.industry} | Roles: ${interpreted.targetRoles.join(', ')} | Zona: ${interpreted.location}`);
-
             if (config.source === 'linkedin') {
-                onLog(`[LINKEDIN] 🚀 Iniciando búsqueda LinkedIn...`);
+                onLog(`[LINKEDIN] 🚀 Iniciando búsqueda LinkedIn con Query Multiplier (Zero-AI)...`);
                 await this.searchLinkedIn(
                     config,
-                    interpreted,
                     existingWebsites,
                     existingCompanyNames,
                     existingEmails,
@@ -490,7 +499,6 @@ Responde SOLO con JSON:
                 onLog(`[GMAIL] 🚀 Iniciando búsqueda Gmail/Maps...`);
                 await this.searchGmail(
                     config,
-                    interpreted,
                     existingWebsites,
                     existingCompanyNames,
                     existingEmails,
@@ -516,7 +524,6 @@ Responde SOLO con JSON:
     // ═══════════════════════════════════════════════════════════════════════════
     private async searchGmail(
         config: SearchConfigState,
-        interpreted: { searchQuery: string; industry: string; targetRoles: string[]; location: string },
         existingWebsites: Set<string>,
         existingCompanyNames: Set<string>,
         existingEmails: Set<string>,
@@ -539,8 +546,8 @@ Responde SOLO con JSON:
         // Targets social profiles where ICP (Agencias, Skool, Infoproductores)
         // publishes their @gmail in the bio — directly visible in Google snippets.
         const baseQuery = config.advancedFilters
-            ? this.buildQueryWithAdvancedFilters(interpreted.searchQuery, config.advancedFilters)
-            : interpreted.searchQuery;
+            ? this.buildQueryWithAdvancedFilters(config.query, config.advancedFilters)
+            : config.query;
 
         const ICP_QUERY_VARIANTS: string[] = [
             `(site:instagram.com OR site:twitter.com) ("agencia de marketing" OR "marketing digital") "@gmail.com" ("España" OR "Madrid" OR "Barcelona")`,
@@ -571,7 +578,7 @@ Responde SOLO con JSON:
             const cycleNum = Math.floor(attempts / ICP_QUERY_VARIANTS.length);
             const activeQuery = cycleNum === 0
                 ? ICP_QUERY_VARIANTS[variantIndex]
-                : this.buildFallbackGmailQuery(ICP_QUERY_VARIANTS[variantIndex], interpreted.location, cycleNum);
+                : this.buildFallbackGmailQuery(ICP_QUERY_VARIANTS[variantIndex], 'España', cycleNum);
             attempts++;
 
             onLog(`[ATTEMPT ${attempts}] 🔍 Dork: "${activeQuery.substring(0, 90)}..."`);
@@ -615,7 +622,7 @@ Responde SOLO con JSON:
                     companyName: result.title || 'Sin Nombre',
                     website: '',
                     socialUrl: result.url || '',
-                    location: interpreted.location,
+                    location: 'España',
                     decisionMaker: {
                         name: '',
                         role: 'Decisor',
@@ -719,11 +726,10 @@ Responde SOLO con JSON:
     }
 
     // ═══════════════════════════════════════════════════════════════════════════
-    // LINKEDIN SEARCH - SMART LOOP WITH PAGINATION
+    // LINKEDIN SEARCH — Query Multiplier + Concurrent Apify + Zero-AI Parsing
     // ═══════════════════════════════════════════════════════════════════════════
     private async searchLinkedIn(
         config: SearchConfigState,
-        interpreted: { searchQuery: string; industry: string; targetRoles: string[]; location: string },
         existingWebsites: Set<string>,
         existingCompanyNames: Set<string>,
         existingEmails: Set<string>,
@@ -731,274 +737,158 @@ Responde SOLO con JSON:
         onLog: LogCallback,
         onComplete: ResultCallback
     ) {
-        console.log('[LINKEDIN] 🚀 searchLinkedIn iniciado');
-        onLog(`[LINKEDIN] 🚀 Iniciando búsqueda LinkedIn...`);
+        console.log('[LINKEDIN] 🚀 searchLinkedIn iniciado (Query Multiplier)');
+        onLog(`[LINKEDIN] 🚀 Iniciando búsqueda LinkedIn con Google X-Ray Search...`);
 
-        // Check Hard Limit
-        let targetCount = config.maxResults;
-        if (!targetCount || targetCount < 1) targetCount = 1;
+        const targetCount = Math.max(1, config.maxResults || 1);
+        const icpType = config.icp_type || 'agency';
+        const baseKeyword = config.advancedFilters
+            ? this.buildQueryWithAdvancedFilters(config.query, config.advancedFilters)
+            : config.query;
+
+        // Generate N location-scoped dork variations — one per location
+        const variations = this.generateQueryVariations(baseKeyword, icpType);
+        onLog(`[LINKEDIN] 🔀 ${variations.length} variaciones de query generadas (una por ubicación)`);
 
         const validLeads: Lead[] = [];
-        let attempts = 0;
-        const MAX_ATTEMPTS = Math.min(30, Math.max(10, targetCount * 3));
-        let currentPage = 1;
         const startTime = Date.now();
         const MAX_DURATION_MS = 38 * 60 * 1000;
-        let consecutiveErrors = 0;
+        const BATCH_SIZE = 5;
 
-        onLog(`[LINKEDIN] 🕵️‍♂️ Target: ${targetCount} leads | Máx. intentos: ${MAX_ATTEMPTS}`);
-        console.log('[LINKEDIN] Target count:', targetCount);
-
-        // ═══════════════════════════════════════════════════════════════════════════
-        // SMART LOOP: Paginate through results — persists until target or time limit
-        // ═══════════════════════════════════════════════════════════════════════════
-        while (validLeads.length < targetCount && this.isRunning && attempts < MAX_ATTEMPTS) {
+        // Process variations in batches of BATCH_SIZE to avoid Apify rate limits
+        for (let batchStart = 0; batchStart < variations.length; batchStart += BATCH_SIZE) {
+            if (!this.isRunning || validLeads.length >= targetCount) break;
             if (Date.now() - startTime > MAX_DURATION_MS) {
                 onLog(`[LINKEDIN] ⏱️ Tiempo máximo alcanzado. ${validLeads.length}/${targetCount} leads encontrados.`);
                 break;
             }
-            attempts++;
-            const needed = targetCount - validLeads.length;
-            const resultsToFetch = needed * 4; // x4 multiplier
 
-            onLog(`[LINKEDIN-ATTEMPT ${attempts}] 🔄 Página ${currentPage}: ${resultsToFetch} resultados...`);
+            const batchVariations = variations.slice(batchStart, batchStart + BATCH_SIZE);
+            const batchNum = Math.floor(batchStart / BATCH_SIZE) + 1;
+            const totalBatches = Math.ceil(variations.length / BATCH_SIZE);
+            onLog(`[LINKEDIN] 📦 Lote ${batchNum}/${totalBatches}: ${batchVariations.length} queries concurrentes...`);
 
-            // Rely solely on the user configuration
-            let activeQuery = config.query;
-            if (config.advancedFilters) {
-                activeQuery = this.buildQueryWithAdvancedFilters(activeQuery, config.advancedFilters);
-            }
-            activeQuery = `site:linkedin.com/in ${activeQuery} ("España" OR "Madrid" OR "Barcelona" OR "Valencia" OR "Sevilla" OR "Spain")`;
-
+            // Execute batch concurrently
+            let batchOrganicResults: any[] = [];
             try {
-                // startPage offsets Google results so each attempt gets a different page.
-                // currentPage starts at 1; startPage=0 means page 1, startPage=1 means page 2, etc.
-                const searchResults = await this.callApifyActor(GOOGLE_SEARCH_SCRAPER, {
-                    queries: activeQuery,
-                    maxPagesPerQuery: 1,
-                    resultsPerPage: 20,
-                    startPage: currentPage - 1,  // 0-indexed offset for Google pagination
-                    languageCode: 'es',
-                    countryCode: 'es',
-                }, onLog);
-
-                let allResults: any[] = [];
-                for (const result of searchResults) {
-                    if (result.organicResults) allResults = allResults.concat(result.organicResults);
-                }
-
-                if (allResults.length === 0) {
-                    onLog(`[LINKEDIN-ATTEMPT ${attempts}] ⚠️ Página ${currentPage} vacía, saltando...`);
-                    currentPage++;
-                    continue;
-                }
-
-                const linkedInProfiles = allResults.filter((r: any) => r.url?.includes('linkedin.com/in/'));
-                onLog(`[DEBUG] 👤 Perfiles encontrados: ${linkedInProfiles.length}`);
-
-                if (linkedInProfiles.length === 0) {
-                    onLog(`[LINKEDIN-ATTEMPT ${attempts}] ⚠️ Sin perfiles LinkedIn en p.${currentPage}, saltando...`);
-                    currentPage++;
-                    continue;
-                }
-
-                // Transform raw profiles into provisional Leads
-                // FAST ICP PRE-FILTER applied here — discard before dedup + AI (zero cost)
-                const provisionalCandidates: Lead[] = [];
-                for (let i = 0; i < linkedInProfiles.length; i++) {
-                    const profile = linkedInProfiles[i];
-
-                    // Kill non-ICP leads before spending any Apify credits or OpenAI tokens
-                    if (!this.fastICPFilter(profile.title || '', profile.description || '', 'linkedin')) {
-                        continue;
-                    }
-
-                    const titleParts = (profile.title || '').split(' - ');
-                    const name = titleParts[0]?.replace(' | LinkedIn', '').trim() || 'Usuario LinkedIn';
-                    const role = this.extractRole(profile.title) || 'Decisor';
-                    const company = this.extractCompany(profile.title) || 'Empresa Desconocida';
-
-                    provisionalCandidates.push({
-                        id: `linkedin-${Date.now()}-${i}`,
-                        source: 'linkedin',
-                        companyName: company,
-                        website: '',
-                        location: interpreted.location,
-                        decisionMaker: {
-                            name,
-                            role,
-                            email: '',
-                            phone: '',
-                            linkedin: profile.url
-                        },
-                        aiAnalysis: {
-                            // Store Google snippet as research context — replaces POSTS_SCRAPER at zero cost.
-                            // Google snippet almost always contains the headline + initial bio.
-                            summary: profile.description || '',
-                            fullAnalysis: '',
-                            psychologicalProfile: '',
-                            businessMoment: '',
-                            salesAngle: '',
-                            fullMessage: '',
-                            generatedIcebreaker: '',
-                            painPoints: []
-                        },
-                        isNPLPotential: false,
-                        status: 'scraped'
-                    });
-                }
-
-                // ═══════════════════════════════════════════════════════════════════════════
-                // DEDUPLICATION: Filter against current session & global history BEFORE analysis
-                // ═══════════════════════════════════════════════════════════════════════════
-                const sessionUnique = provisionalCandidates.filter(candidate =>
-                    !validLeads.some(dl => dl.companyName === candidate.companyName || dl.decisionMaker?.linkedin === candidate.decisionMaker?.linkedin)
+                const batchResults = await Promise.all(
+                    batchVariations.map(q =>
+                        this.callApifyActor(GOOGLE_SEARCH_SCRAPER, {
+                            queries: q,
+                            maxPagesPerQuery: 1,
+                            resultsPerPage: 20,
+                            languageCode: 'es',
+                            countryCode: 'es',
+                        }, onLog).catch((e: Error) => {
+                            onLog(`[LINKEDIN] ⚠️ Variación falló: ${e.message}`);
+                            return [] as any[];
+                        })
+                    )
                 );
-
-                let globalUnique: Lead[] = [];
-                if (sessionUnique.length > 0) {
-                    onLog(`[DEDUP] 🎯 Filtrando ${sessionUnique.length} candidatos LinkedIn contra historial global...`);
-                    globalUnique = deduplicationService.filterUniqueCandidates(
-                        sessionUnique,
-                        existingWebsites,
-                        existingCompanyNames,
-                        existingEmails,
-                        existingLinkedinUrls
-                    );
-
-                    if (globalUnique.length < sessionUnique.length) {
-                        onLog(
-                            `[DEDUP] ⚠️ ${sessionUnique.length - globalUnique.length} duplicados descartados. ` +
-                            `Quedan ${globalUnique.length} nuevos por procesar.`
-                        );
+                for (const items of batchResults) {
+                    for (const item of items) {
+                        if (item.organicResults) {
+                            batchOrganicResults = batchOrganicResults.concat(item.organicResults);
+                        }
                     }
                 }
-
-                if (globalUnique.length === 0) {
-                    onLog(`[LINKEDIN-ATTEMPT ${attempts}] ℹ️ Todos los candidatos de esta página ya existen en historial.`);
-                    currentPage++;
-                    continue;
-                }
-
-                // Slice the results exactly to what we need
-                const remainingSlots = targetCount - validLeads.length;
-                const candidatesToProcess = globalUnique.slice(0, remainingSlots);
-
-                onLog(`[INFO] Procesando ${candidatesToProcess.length} leads únicos (saltando el resto para respetar target: ${targetCount}).`);
-
-                const prevCount = validLeads.length;
-                const processCount = Math.min(candidatesToProcess.length, targetCount - prevCount);
-                if (processCount <= 0) break;
-
-                const candidatesBatch = candidatesToProcess.slice(0, processCount);
-
-                // ═══════════════════════════════════════════════════════════════════════════
-                // ICP BATCH SCORING: One OpenAI call per batch to validate ICP fit.
-                // Cheap (gpt-4o-mini, ~200 tokens). Discards false positives that pass the
-                // regex but don't truly match the ICP, and forces the loop to paginate deeper.
-                // ═══════════════════════════════════════════════════════════════════════════
-                onLog(`[ICP] 🤖 Validando ${candidatesBatch.length} candidatos con IA (batch único)...`);
-                const icpResults = await this.batchICPScore(candidatesBatch, config.icp_type || 'agency');
-
-                for (let ci = 0; ci < candidatesBatch.length; ci++) {
-                    if (!this.isRunning) break;
-                    const candidate = candidatesBatch[ci];
-                    if (!icpResults[ci]) {
-                        onLog(`[ICP] ❌ Descartado (no ICP): ${candidate.decisionMaker?.name || candidate.companyName}`);
-                        continue;
-                    }
-                    candidate.status = 'ready';
-                    validLeads.push(candidate);
-                    // Register in in-memory sets so duplicates within this session are caught
-                    if (candidate.decisionMaker?.linkedin) {
-                        existingLinkedinUrls.add(
-                            candidate.decisionMaker.linkedin.toLowerCase().trim()
-                        );
-                    }
-                    if (candidate.decisionMaker?.email) {
-                        existingEmails.add(candidate.decisionMaker.email.toLowerCase().trim());
-                    }
-                    onLog(`[SUCCESS] ✅ Lead ${validLeads.length}/${targetCount}: ${candidate.decisionMaker?.name || candidate.companyName}`);
-                }
-
-                currentPage++;
-
-            } catch (error: any) {
-                consecutiveErrors++;
-                onLog(`[LINKEDIN-ATTEMPT ${attempts}] ❌ Error (${consecutiveErrors}/3): ${error.message}`);
-                if (consecutiveErrors >= 3) {
-                    onLog(`[LINKEDIN] ⛔ 3 errores consecutivos — deteniendo búsqueda.`);
-                    break;
-                }
-                await new Promise(r => setTimeout(r, 2000 * consecutiveErrors));
-                currentPage++;
+            } catch (e: any) {
+                onLog(`[LINKEDIN] ❌ Error en lote ${batchNum}: ${e.message}`);
                 continue;
             }
-            consecutiveErrors = 0;
-        } // End Smart Loop
 
-        onLog(`[LINKEDIN] 🏁 Búsqueda completada: ${validLeads.length}/${targetCount} en ${attempts} intentos (${Math.round((Date.now() - startTime) / 1000)}s)`);
-        onComplete(validLeads);
-    }
+            onLog(`[LINKEDIN] 📊 Lote ${batchNum}: ${batchOrganicResults.length} resultados crudos`);
 
-    /**
-     * Lightweight ICP batch scoring via a single OpenAI call.
-     * Takes up to ~10 candidates, returns a boolean array (true = passes ICP).
-     * Falls back to all-pass on any error to avoid blocking the search.
-     */
-    private async batchICPScore(candidates: Lead[], icpType: string): Promise<boolean[]> {
-        if (candidates.length === 0) return [];
+            // ── FAST ICP PRE-FILTER (URL + regex, zero cost) ──────────────────
+            const icpPassed = batchOrganicResults.filter((r: any) =>
+                this.fastICPFilter(r.title || '', r.description || '', icpType, r.url || r.link || '')
+            );
+            onLog(`[ICP] 🎯 ${icpPassed.length}/${batchOrganicResults.length} pasaron el filtro ICP`);
 
-        const profiles = candidates
-            .map((c, i) => {
-                const snippet = (c.aiAnalysis?.summary || '').slice(0, 150);
-                return `[${i}] ${c.decisionMaker?.name || '?'} | ${c.decisionMaker?.role || '?'} | ${snippet}`;
-            })
-            .join('\n');
+            // ── PARSE + MAP to Lead objects (Zero-AI) ─────────────────────────
+            const provisionalCandidates: Lead[] = [];
+            for (let i = 0; i < icpPassed.length; i++) {
+                const result = icpPassed[i];
+                const url: string = result.url || result.link || '';
+                const title: string = result.title || '';
+                const description: string = result.description || result.snippet || '';
 
-        const icpDescription = icpType === 'agency'
-            ? 'Fundadores, CEO, Directores o Propietarios de agencias de marketing digital B2B UBICADOS EN ESPAÑA (growth, paid media, SEO, automatización, lead gen). EXCLUYE: perfiles fuera de España, empleados, freelancers, diseño gráfico básico, buscando empleo.'
-            : 'Coaches high-ticket, infoproductores, creadores de comunidades online, consultores digitales con negocio propio UBICADOS EN ESPAÑA. EXCLUYE: perfiles fuera de España, empleados, buscando empleo, freelancers sin negocio propio.';
+                // Must be a personal LinkedIn profile
+                if (!url.includes('linkedin.com/in/')) continue;
 
-        try {
-            const response = await fetch('/api/openai', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    model: 'gpt-4o-mini',
-                    messages: [
-                        {
-                            role: 'system',
-                            content: `Eres un filtro ICP para prospección B2B. Analiza cada perfil y decide si encaja con el ICP objetivo.\n\nICP: ${icpDescription}\n\nResponde ÚNICAMENTE con un array JSON sin texto adicional: [{"index":0,"pass":true},{"index":1,"pass":false},...]`
-                        },
-                        {
-                            role: 'user',
-                            content: `Evalúa estos ${candidates.length} perfiles:\n${profiles}`
-                        }
-                    ],
-                    temperature: 0,
-                    max_tokens: 250
-                })
-            });
+                const parsed = this.parseSnippetData(title, description, url);
 
-            if (!response.ok) throw new Error(`HTTP ${response.status}`);
-            const data = await response.json();
-            const content: string = data.choices?.[0]?.message?.content || '[]';
-            const jsonMatch = content.match(/\[[\s\S]*\]/);
-            if (!jsonMatch) throw new Error('No JSON array in response');
-
-            const results: { index: number; pass: boolean }[] = JSON.parse(jsonMatch[0]);
-            const passArray = new Array(candidates.length).fill(true); // default pass
-            for (const r of results) {
-                if (typeof r.index === 'number' && typeof r.pass === 'boolean') {
-                    passArray[r.index] = r.pass;
-                }
+                provisionalCandidates.push({
+                    id: `linkedin-${Date.now()}-${batchStart}-${i}`,
+                    source: 'linkedin' as const,
+                    companyName: parsed.company || 'Empresa Desconocida',
+                    website: '',
+                    location: 'España',
+                    icp_type: icpType,
+                    decisionMaker: {
+                        name: parsed.fullName || 'Usuario LinkedIn',
+                        role: parsed.role,
+                        email: '',
+                        phone: '',
+                        linkedin: url,
+                    },
+                    aiAnalysis: {
+                        summary: description.substring(0, 300),
+                        painPoints: [],
+                        generatedIcebreaker: '',
+                        fullMessage: '',
+                        fullAnalysis: '',
+                        psychologicalProfile: '',
+                        businessMoment: '',
+                        salesAngle: '',
+                    },
+                    messageA: undefined,
+                    isNPLPotential: false,
+                    status: 'scraped' as const,
+                });
             }
-            return passArray;
-        } catch (e) {
-            console.warn('[ICP-SCORE] Error en batch scoring, aceptando todos:', e);
-            return new Array(candidates.length).fill(true);
-        }
+
+            // ── SESSION DEDUP ─────────────────────────────────────────────────
+            const sessionUnique = provisionalCandidates.filter(candidate =>
+                !validLeads.some(dl =>
+                    dl.decisionMaker?.linkedin === candidate.decisionMaker?.linkedin ||
+                    (dl.companyName === candidate.companyName && dl.companyName !== 'Empresa Desconocida')
+                )
+            );
+
+            if (sessionUnique.length === 0) {
+                onLog(`[LINKEDIN] ℹ️ Todos los candidatos del lote ${batchNum} ya existen en historial.`);
+                continue;
+            }
+
+            // ── GLOBAL DEDUP against DB history ──────────────────────────────
+            onLog(`[DEDUP] 🎯 Filtrando ${sessionUnique.length} candidatos contra historial global...`);
+            const slotsRemaining = targetCount - validLeads.length;
+            const toDedup = sessionUnique.slice(0, slotsRemaining * 2); // x2 buffer
+            const globalUnique = deduplicationService.filterUniqueCandidates(
+                toDedup, existingWebsites, existingCompanyNames, existingEmails, existingLinkedinUrls
+            );
+
+            if (globalUnique.length < toDedup.length) {
+                onLog(`[DEDUP] ⚠️ ${toDedup.length - globalUnique.length} duplicados descartados. Quedan ${globalUnique.length} nuevos.`);
+            }
+
+            // ── ACCEPT leads respecting targetCount cap ────────────────────────
+            for (const lead of globalUnique) {
+                if (!this.isRunning || validLeads.length >= targetCount) break;
+                lead.status = 'ready';
+                validLeads.push(lead);
+                // Register in in-memory sets for within-session dedup
+                if (lead.decisionMaker?.linkedin) {
+                    existingLinkedinUrls.add(lead.decisionMaker.linkedin.toLowerCase().trim());
+                }
+                onLog(`[SUCCESS] ✅ Lead ${validLeads.length}/${targetCount}: ${lead.decisionMaker?.name || lead.companyName}`);
+            }
+        } // end batch loop
+
+        const elapsed = Math.round((Date.now() - startTime) / 1000);
+        onLog(`[LINKEDIN] 🏁 Búsqueda completada: ${validLeads.length}/${targetCount} en ${elapsed}s`);
+        onComplete(validLeads);
     }
 
     // ═══════════════════════════════════════════════════════════════════════════
@@ -1034,9 +924,14 @@ Responde SOLO con JSON:
     // FAST ICP PRE-FILTER — Client-side regex gate, runs BEFORE dedup and AI
     // Eliminates non-ICP leads without spending a single Apify credit or OpenAI token.
     // Returns true  → lead matches ICP, proceed normally.
-    // Returns false → discard immediately, skip dedup + analysis.
+    // Returns false → discard immediately.
     // ═══════════════════════════════════════════════════════════════════════════
-    private fastICPFilter(title: string, description: string, _icpType: string): boolean {
+    private fastICPFilter(title: string, description: string, _icpType: string, url?: string): boolean {
+        // ── URL type gate — reject company pages, posts, and job listings ─────
+        if (url) {
+            if (/linkedin\.com\/(company|posts|jobs)\//i.test(url)) return false;
+        }
+
         const corpus = `${title} ${description}`.toLowerCase();
 
         // ── Spain gate — must show a Spain location signal in the snippet ──────
@@ -1046,7 +941,7 @@ Responde SOLO con JSON:
         if (!SPAIN_REGEX.test(corpus)) return false;
 
         // ── Negative gate (hard stop) ──────────────────────────────────────────
-        const NEGATIVE_REGEX = /\b(junior|intern|estudiante|freelance|buscando nuevas oportunidades|profesor)\b/i;
+        const NEGATIVE_REGEX = /\b(junior|intern(a)?|estudiante|dise[nñ]ador|dise[nñ]o gr[aá]fico|freelance|buscando nuevas oportunidades|buscando empleo|open to work|en b[uú]squeda activa|profesor)\b/i;
         if (NEGATIVE_REGEX.test(corpus)) return false;
 
         // ── Positive gate (must match at least one) ────────────────────────────
